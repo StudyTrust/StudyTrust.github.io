@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signing in — StudyTrust</title>
+  <style>
+    body { margin: 0; display: flex; align-items: center; justify-content: center;
+           min-height: 100vh; font-family: sans-serif; background: #f3f4f6; color: #374151; }
+    p { font-size: 14px; }
+  </style>
+</head>
+<body>
+  <p>Completing sign-in…</p>
+  <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+  <script>
+    'use strict';
+    (async function () {
+      const msalApp = new msal.PublicClientApplication({
+        auth: {
+          clientId:    'c5c93f6e-957d-431f-8e83-ff22e7be10a9',
+          authority:   'https://login.microsoftonline.com/studietrust.onmicrosoft.com',
+          redirectUri: 'https://studytrust.github.io/auth.html'
+        },
+        cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: true }
+      });
+      await msalApp.initialize();
+      try { await msalApp.handleRedirectPromise(); } catch (e) {}
+      // MSAL closes the popup automatically after handleRedirectPromise.
+      // window.close() is a safety net in case it does not.
+      try { window.close(); } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

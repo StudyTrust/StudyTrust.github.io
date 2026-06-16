@@ -1,0 +1,2040 @@
+<!DOCTYPE html>
+<html lang="en-ZA">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyTrust Personnel Hub</title>
+<!--
+  ════════════════════════════════════════════════════════
+  STUDYTRUST PERSONNEL HUB  v1.0  —  Microsoft Graph Edition
+  ════════════════════════════════════════════════════════
+  Companion dashboard to the Governance Hub and Audit Tracker.
+  Same Azure AD app · same GitHub Pages repo · new SharePoint site.
+
+  IT SETUP (one-time — hand to Simon Letsela):
+  1. Add redirect URI to existing Azure AD app c5c93f6e-957d-431f-8e83-ff22e7be10a9:
+       Single-page application →
+       https://studytrust.github.io/StudyTrust_Personnel_Hub.html
+  2. Create SharePoint Communication Site:
+       studietrust.sharepoint.com/sites/StudyTrustPersonnel
+  3. Create Azure AD group: Dashboards - Personnel-ClusterManagers
+  4. Create Azure AD group: Dashboards - Personnel-Management
+  5. Create 5 SharePoint lists in the new site (see Column Guide button inside app).
+  ════════════════════════════════════════════════════════
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js"></script>
+<style>
+:root{
+  --st:#226397;--st-d:#003d66;--st-m:#1c4e80;--st-a:#4da3d9;
+  --st-l:#b3d9f2;--st-p:#e8f0f8;
+  --bg:#f4f6f9;--sur:#fff;--bdr:#dde1e7;
+  --tx:#1a1a2e;--tx2:#5a6172;--tx3:#8a92a0;
+  --gn-bg:#e8f5e9;--gn-tx:#1b5e20;
+  --am-bg:#fff8e1;--am-tx:#b26a00;
+  --rd-bg:#fde8e8;--rd-tx:#7a2020;
+  --pu-bg:#f3e5f5;--pu-tx:#6a1b9a;
+  --tl-bg:#e0f2f1;--tl-tx:#00695c;
+  --r:8px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Aptos,'Segoe UI',Calibri,sans-serif;font-size:14px;color:var(--tx);background:var(--bg);min-height:100vh}
+
+/* ── SIGN IN ── */
+#signin-screen{position:fixed;inset:0;background:var(--st-d);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#signin-screen.hidden{display:none}
+.si-card{background:#fff;border-radius:14px;padding:36px 40px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.si-card h2{font-size:18px;font-weight:700;color:var(--st);margin-bottom:5px}
+.si-card p{font-size:12px;color:var(--tx2);margin-bottom:22px;line-height:1.5}
+.si-btn{background:var(--st);color:#fff;border:none;border-radius:8px;padding:12px 28px;font-size:13px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit}
+.si-btn:hover{background:var(--st-m)}
+.si-btn:disabled{opacity:.55;cursor:not-allowed}
+.si-err{background:var(--rd-bg);border:1px solid #ef9a9a;border-radius:7px;padding:9px 12px;font-size:12px;color:var(--rd-tx);margin-top:12px;display:none;text-align:left;line-height:1.5}
+.si-err.show{display:block}
+.si-note{font-size:11px;color:rgba(255,255,255,.55);margin-top:14px}
+
+/* ── LOADING ── */
+#load{position:fixed;inset:0;background:rgba(0,61,102,.9);z-index:8000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#load.hidden{display:none}
+.spin{width:40px;height:40px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#load-msg{color:#fff;font-size:14px;font-weight:500}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:22px;right:22px;background:var(--st-d);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:13px;z-index:2000;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none;max-width:340px}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.success{background:var(--gn-tx)}
+#toast.warning{background:var(--am-tx)}
+#toast.error{background:var(--rd-tx)}
+
+/* ── HEADER ── */
+.hdr{background:var(--st-d);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;box-shadow:0 2px 10px rgba(0,0,0,.3);flex-wrap:wrap;gap:8px}
+.hdr-brand{display:flex;align-items:center;gap:10px}
+.hdr-icon{width:36px;height:36px;background:rgba(255,255,255,.12);border-radius:var(--r);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hdr-title{font-size:15px;font-weight:700}
+.hdr-sub{font-size:10px;opacity:.6;margin-top:1px}
+.hdr-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.role-badge{font-size:10px;border-radius:20px;padding:3px 10px;font-weight:600;white-space:nowrap}
+.rb-superadmin{background:rgba(255,200,0,.2);color:#ffe082;border:1px solid rgba(255,200,0,.3)}
+.rb-hradmin{background:rgba(100,220,130,.2);color:#a5f3c0;border:1px solid rgba(100,220,130,.3)}
+.rb-clustermgr{background:rgba(147,197,253,.2);color:#bfdbfe;border:1px solid rgba(147,197,253,.3)}
+.rb-management{background:rgba(241,90,41,.18);color:#ffd1bf;border:1px solid rgba(241,90,41,.4)}
+.rb-auditor{background:rgba(167,243,208,.2);color:#6ee7b7;border:1px solid rgba(167,243,208,.3)}
+.rb-employee{background:rgba(255,255,255,.12);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25)}
+.hdr-user{font-size:11px;opacity:.7}
+.hdr-btn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-weight:500}
+.hdr-btn:hover{background:rgba(255,255,255,.22)}
+.hdr-link{font-size:11px;color:rgba(255,255,255,.75);text-decoration:none;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:4px 10px;white-space:nowrap}
+.hdr-link:hover{background:rgba(255,255,255,.2);color:#fff}
+
+/* ── ROLE BANNER ── */
+#role-banner{padding:5px 20px;font-size:12px;font-weight:600;text-align:center}
+.ban-superadmin{background:#fff3cd;color:#856404;border-bottom:1px solid #ffc107}
+.ban-hradmin{background:var(--gn-bg);color:var(--gn-tx);border-bottom:1px solid #a5d6a7}
+.ban-clustermgr{background:var(--st-p);color:var(--st-m);border-bottom:1px solid var(--st-l)}
+.ban-management{background:#fde7dc;color:#7a2e0b;border-bottom:1px solid #f15a29}
+.ban-auditor{background:#d1fae5;color:#065f46;border-bottom:1px solid #6ee7b7}
+.ban-employee{background:var(--st-p);color:var(--st-m);border-bottom:1px solid var(--st-l)}
+
+/* ── NOTIFICATION BELL ── */
+#notif-btn{position:relative;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:50%;width:32px;height:32px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#notif-count{position:absolute;top:-4px;right:-4px;background:#e53935;color:#fff;border-radius:10px;font-size:9px;font-weight:700;min-width:16px;height:16px;display:none;align-items:center;justify-content:center;padding:0 3px}
+#notif-panel{display:none;position:fixed;top:56px;right:14px;width:370px;max-height:72vh;background:#fff;border-radius:var(--r);border:1px solid var(--bdr);box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:400;flex-direction:column;overflow:hidden}
+#notif-panel.open{display:flex}
+#notif-hdr{padding:11px 15px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;background:var(--st-p)}
+#notif-hdr h3{font-size:13px;font-weight:700;color:var(--st)}
+#notif-list{overflow-y:auto;flex:1;padding:6px 0}
+.ni{padding:9px 14px;border-bottom:.5px solid #f0f2f5;cursor:default}
+.ni:hover{background:#fafbfc}
+.ni-title{font-size:12px;font-weight:600;color:var(--tx);margin-bottom:2px;display:flex;align-items:center;gap:6px}
+.ni-meta{font-size:11px;color:var(--tx3)}
+.ni-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px}
+.ni-high{background:var(--rd-bg);color:var(--rd-tx)}
+.ni-medium{background:var(--am-bg);color:var(--am-tx)}
+.ni-low{background:var(--gn-bg);color:var(--gn-tx)}
+.ni-info{background:var(--st-p);color:var(--st)}
+.notif-empty{padding:22px;text-align:center;color:var(--tx3);font-size:12px}
+.notif-footer{padding:8px 14px;border-top:1px solid var(--bdr);text-align:center}
+.notif-footer button{font-size:11px;color:var(--st);background:none;border:none;cursor:pointer;font-family:inherit;font-weight:600}
+
+/* ── TABS ── */
+.tabs{background:var(--sur);border-bottom:2px solid var(--st-l);padding:0 20px;position:sticky;top:52px;z-index:190;display:flex;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{padding:10px 14px;border:none;background:none;cursor:pointer;font-size:12px;color:var(--tx2);border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;font-family:inherit;font-weight:500;display:flex;align-items:center;gap:5px}
+.tab.on{color:var(--st);border-bottom-color:var(--st);font-weight:600}
+.tab:hover:not(.on){color:var(--st-m)}
+.tab-count{background:var(--rd-bg);color:var(--rd-tx);border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px}
+
+/* ── SECTIONS ── */
+.sec{display:none;padding:16px 20px 36px}
+.sec.on{display:block}
+.slabel{font-size:10px;font-weight:700;color:var(--tx3);letter-spacing:.1em;text-transform:uppercase;margin:14px 0 8px}
+.slabel:first-child{margin-top:0}
+
+/* ── KPI CARDS ── */
+.g-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:13px 15px}
+.kpi.hl{background:var(--st-p);border-color:var(--st-l)}
+.kpi-l{font-size:11px;color:var(--tx2);margin-bottom:3px}
+.kpi-v{font-size:26px;font-weight:700;line-height:1;color:var(--st)}
+.kpi-s{font-size:11px;color:var(--tx3);margin-top:3px}
+.kpi.kpi-rd .kpi-v{color:var(--rd-tx)}
+.kpi.kpi-gn .kpi-v{color:var(--gn-tx)}
+.kpi.kpi-am .kpi-v{color:var(--am-tx)}
+
+/* ── GRIDS ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:1100px){.g4{grid-template-columns:1fr 1fr}.g3{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+/* ── CARDS ── */
+.card{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden;margin-bottom:14px}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--bdr);font-weight:600;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.card-body{padding:14px}
+
+/* ── PROGRESS BARS ── */
+.prog-row{margin-bottom:9px}
+.prog-meta{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;color:var(--tx)}
+.prog-bar{height:8px;border-radius:4px;background:var(--bg);overflow:hidden}
+.prog-fill{height:100%;border-radius:4px;background:var(--st)}
+.prog-fill.gn{background:var(--gn-tx)}
+.prog-fill.am{background:var(--am-tx)}
+.prog-fill.rd{background:var(--rd-tx)}
+
+/* ── BADGES ── */
+.bd{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap}
+.bg{background:var(--gn-bg);color:var(--gn-tx)}
+.ba{background:var(--am-bg);color:var(--am-tx)}
+.br{background:var(--rd-bg);color:var(--rd-tx)}
+.bb{background:#e3f2fd;color:#0d47a1}
+.bp{background:var(--pu-bg);color:var(--pu-tx)}
+.bt{background:var(--tl-bg);color:var(--tl-tx)}
+.bgy{background:var(--bg);color:var(--tx2);border:1px solid var(--bdr)}
+
+/* ── TABLES ── */
+.tbl-wrap{overflow-x:auto}
+.dt{width:100%;border-collapse:collapse;font-size:12px}
+.dt th{background:var(--st);color:#fff;padding:7px 11px;text-align:left;font-weight:600;font-size:11px;white-space:nowrap}
+.dt td{padding:7px 11px;border-bottom:1px solid var(--bdr);vertical-align:middle}
+.dt tbody tr:hover td{background:var(--bg)}
+
+/* ── TOOLBAR ── */
+.toolbar{padding:9px 13px;border-bottom:1px solid var(--bdr);display:flex;gap:7px;align-items:center;flex-wrap:wrap;background:var(--bg)}
+.toolbar input,.toolbar select{font-size:12px;padding:5px 9px;border:1px solid var(--bdr);border-radius:5px;background:var(--sur);color:var(--tx);font-family:inherit}
+.toolbar input{min-width:160px}
+
+/* ── BUTTONS ── */
+.btn{font-size:12px;border:none;border-radius:6px;padding:6px 13px;cursor:pointer;font-family:inherit;font-weight:600}
+.btn-pri{background:var(--st);color:#fff}.btn-pri:hover{background:var(--st-d)}
+.btn-sec{background:var(--bg);color:var(--tx);border:1px solid var(--bdr)}.btn-sec:hover{background:var(--st-p)}
+.btn-am{background:var(--am-bg);color:#7a4400;border:1px solid #ef9f27}
+.btn-gn{background:var(--gn-bg);color:var(--gn-tx);border:1px solid #81c784}
+.btn-rd{background:var(--rd-bg);color:var(--rd-tx);border:1px solid #ef9a9a}
+.btn-sm{font-size:11px;padding:3px 9px}
+
+/* ── MODAL ── */
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;overflow-y:auto;padding:24px 16px}
+.modal-ov.show{display:flex;align-items:flex-start;justify-content:center}
+.modal{background:var(--sur);border-radius:12px;width:100%;max-width:680px;border:1px solid var(--bdr);box-shadow:0 8px 40px rgba(0,0,0,.25);overflow:hidden}
+.modal-lg{max-width:900px}
+.modal-hd{background:var(--st-d);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:14px;font-weight:600}
+.modal-x{background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;line-height:1;padding:2px 5px}
+.modal-x:hover{color:#fff}
+.modal-body{padding:18px;max-height:75vh;overflow-y:auto}
+.f-row{margin-bottom:12px}
+.f-row label{display:block;font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:4px}
+.f-row input,.f-row select,.f-row textarea{width:100%;font-size:12px;padding:6px 10px;border:1px solid var(--bdr);border-radius:5px;font-family:inherit;color:var(--tx)}
+.f-row textarea{min-height:65px;resize:vertical}
+.f-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.f-grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.modal-actions{padding:14px 18px;border-top:1px solid var(--bdr);display:flex;justify-content:flex-end;gap:8px;background:var(--bg)}
+
+/* ── INFO BOX ── */
+.info-box{border-radius:var(--r);padding:12px 14px;margin-bottom:14px;font-size:12px;line-height:1.6}
+.info-am{background:var(--am-bg);border-left:4px solid #ef9f27;color:var(--am-tx)}
+.info-gn{background:var(--gn-bg);border-left:4px solid #4caf50;color:var(--gn-tx)}
+.info-bl{background:#e3f2fd;border-left:4px solid var(--st-a);color:#0d47a1}
+.info-rd{background:var(--rd-bg);border-left:4px solid var(--rd-tx);color:var(--rd-tx)}
+
+/* ── COLUMN GUIDE ── */
+.cg{background:var(--bg);border:1px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:11px;line-height:2;font-family:monospace;margin-bottom:10px}
+.cg span{display:inline-block;background:var(--st-p);color:var(--st);border-radius:4px;padding:0 4px;margin:1px;font-weight:700}
+.cg em{color:var(--tx3);font-style:normal}
+
+/* ── QUICK ACCESS ── */
+.qa-c{background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:13px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:border-color .15s}
+.qa-c:hover{border-color:var(--st)}
+.qa-icon{width:30px;height:30px;background:var(--st-p);border-radius:var(--r);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+.qa-title{font-size:13px;font-weight:600;margin-bottom:2px}
+.qa-desc{font-size:11px;color:var(--tx2)}
+
+/* ── WEBHOOK ── */
+.wh-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.wh-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.wh-ok{background:var(--gn-tx)}.wh-empty{background:#ccc}
+
+/* ── GENDER SPLIT ── */
+.gender-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:6px 0}
+.gender-m{background:#226397}
+.gender-f{background:#4da3d9}
+
+/* ── FOOTER ── */
+.dash-footer{background:var(--st-d);color:rgba(255,255,255,.55);font-size:11px;padding:11px 20px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+
+<!-- SIGN IN -->
+<div id="signin-screen">
+  <div class="si-card">
+    <h2>StudyTrust Personnel Hub</h2>
+    <p>Sign in with your Microsoft 365 account to access personnel data, alerts, and the employee directory.</p>
+    <button class="si-btn" onclick="doSignIn()">
+      <svg width="18" height="18" viewBox="0 0 21 21" fill="none"><rect width="10" height="10" fill="#F25022"/><rect x="11" width="10" height="10" fill="#7FBA00"/><rect y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg>
+      Sign in with Microsoft
+    </button>
+    <div class="si-err" id="si-err"></div>
+  </div>
+  <div class="si-note">StudyTrust · 000-601 NPO · IT3895/11(T) · Personnel data is confidential</div>
+</div>
+
+<!-- LOADING -->
+<div id="load" class="hidden">
+  <div class="spin"></div>
+  <div id="load-msg">Loading personnel data…</div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- HEADER -->
+<header class="hdr">
+  <div class="hdr-brand">
+    <div class="hdr-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    </div>
+    <div>
+      <div class="hdr-title">StudyTrust Personnel Hub <span style="font-size:10px;opacity:.4;font-weight:400">v1.0</span></div>
+      <div class="hdr-sub">Personnel · Compliance · Records · 000-601 NPO</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <span class="role-badge rb-employee" id="role-badge">All Personnel</span>
+    <span class="hdr-user" id="user-name"></span>
+    <button id="notif-btn" onclick="toggleNotif()" title="Notifications">🔔<span id="notif-count" style="display:none">0</span></button>
+    <a href="https://studytrust.github.io/StudyTrust_Governance_Dashboard_v4.html" target="_blank" class="hdr-link">🏛 Governance Hub</a>
+    <a href="https://studytrust.github.io/StudyTrust_Audit_Dashboard.html" target="_blank" class="hdr-link">📋 Audit Tracker</a>
+    <button class="hdr-btn" id="btn-guide" onclick="openM('m-guide')" style="display:none">📋 Column Guide</button>
+    <button class="hdr-btn" onclick="doSignOut()">Sign out</button>
+  </div>
+</header>
+
+<!-- ROLE BANNER -->
+<div id="role-banner" class="ban-employee">Employee View — My Profile and Directory</div>
+
+<!-- NOTIFICATION PANEL -->
+<div id="notif-panel">
+  <div id="notif-hdr">
+    <h3>HR Alerts &amp; Notifications</h3>
+    <div style="display:flex;gap:7px;align-items:center">
+      <button style="font-size:11px;color:var(--st);background:none;border:none;cursor:pointer;font-weight:600" onclick="markAllRead()">Mark all read</button>
+      <button class="btn btn-sec btn-sm" onclick="toggleNotif()">✕</button>
+    </div>
+  </div>
+  <div id="notif-list"><div class="notif-empty">No active alerts.</div></div>
+  <div class="notif-footer"><button onclick="showTab('sec-alerts');toggleNotif()">View all alerts →</button></div>
+</div>
+
+<!-- TABS -->
+<nav class="tabs" id="tab-bar"></nav>
+
+<!-- ═══════════ CONTENT ═══════════ -->
+<div id="content">
+
+<!-- ── OVERVIEW ── -->
+<section id="sec-overview" class="sec">
+  <div class="slabel" style="margin-bottom:10px">Personnel Dashboard</div>
+  <div class="g-kpi" id="kpi-grid"></div>
+
+  <div class="g2" style="margin-top:14px">
+    <div class="card">
+      <div class="card-hd">Personnel by Cluster</div>
+      <div class="card-body" id="cluster-chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Employment Breakdown</div>
+      <div class="card-body" id="employment-chart"></div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="card-hd">EE Race Distribution</div>
+      <div class="card-body" id="race-chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Active Alerts <span id="alert-badge" class="tab-count" style="font-size:11px"></span></div>
+      <div class="card-body" id="overview-alerts"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── ANALYTICS ── -->
+<section id="sec-analytics" class="sec">
+  <div class="slabel">Workforce Analytics</div>
+  <div class="g-kpi" id="analytics-kpi"></div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hd">Gender by Cluster</div>
+      <div class="card-body" id="gender-cluster-chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Job Grade Distribution</div>
+      <div class="card-body" id="grade-chart"></div>
+    </div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hd">Age Distribution</div>
+      <div class="card-body" id="age-chart"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Contract Types</div>
+      <div class="card-body" id="contract-chart"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── ALERTS ── -->
+<section id="sec-alerts" class="sec">
+  <div class="card">
+    <div class="card-hd">
+      HR Alerts Log
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-pri btn-sm" id="btn-add-alert" style="display:none" onclick="openM('m-alert')">+ Add Alert</button>
+        <button class="btn btn-sec btn-sm" onclick="exportXlsx('alerts')">⬇ XLSX</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="alert-q" placeholder="Search alerts…" oninput="renderAlerts()">
+      <select id="alert-type" onchange="renderAlerts()"><option value="">All Types</option>
+        <option>Contract Expiry</option><option>Work Permit Expiry</option><option>Missing Document</option>
+        <option>Youth Threshold</option><option>Onboarding Incomplete</option><option>Performance Overdue</option>
+        <option>Medical Aid Missing</option><option>Internship End</option><option>Conflict of Interest Overdue</option>
+      </select>
+      <select id="alert-priority" onchange="renderAlerts()"><option value="">All Priorities</option><option>High</option><option>Medium</option><option>Low</option></select>
+      <select id="alert-cluster" onchange="renderAlerts()"><option value="">All Clusters</option></select>
+      <select id="alert-status" onchange="renderAlerts()"><option value="Active">Active</option><option value="">All</option><option value="Resolved">Resolved</option><option value="Dismissed">Dismissed</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr><th>Alert</th><th>Type</th><th>Employee</th><th>Cluster</th><th>Due Date</th><th>Days</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="alerts-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── DIRECTORY ── -->
+<section id="sec-directory" class="sec">
+  <div class="card">
+    <div class="card-hd">
+      Personnel Directory
+      <span id="dir-count" style="font-size:11px;color:var(--tx3)"></span>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="dir-q" placeholder="Search by name, job title…" oninput="renderDirectory()">
+      <select id="dir-cluster" onchange="renderDirectory()"><option value="">All Clusters</option></select>
+      <select id="dir-type" onchange="renderDirectory()"><option value="">All Employment Types</option><option>Permanent</option><option>Fixed Term</option><option>Intern</option></select>
+      <select id="dir-gender" onchange="renderDirectory()"><option value="">All Genders</option><option>Male</option><option>Female</option><option>Other</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr><th>Name</th><th>Known As</th><th>Job Title</th><th>Cluster</th><th>Employment Type</th><th>Email</th><th>Manager</th></tr></thead>
+      <tbody id="dir-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── PERSONNEL REGISTER ── -->
+<section id="sec-register" class="sec">
+  <div class="card">
+    <div class="card-hd">
+      Personnel Register
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <span id="reg-prog" style="font-size:11px;color:var(--tx3)"></span>
+        <button class="btn btn-pri btn-sm" id="btn-add-emp" onclick="openM('m-employee')">+ Add Employee</button>
+        <button class="btn btn-sec btn-sm" onclick="exportXlsx('register')">⬇ XLSX</button>
+        <button class="btn btn-sec btn-sm" onclick="toggleArchiveView()">🗄 Show Archive</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="reg-q" placeholder="Search employees…" oninput="renderRegister()">
+      <select id="reg-cluster" onchange="renderRegister()"><option value="">All Clusters</option></select>
+      <select id="reg-type" onchange="renderRegister()"><option value="">All Types</option><option>Permanent</option><option>Fixed Term</option><option>Intern</option><option>Part-Time</option></select>
+      <select id="reg-gender" onchange="renderRegister()"><option value="">All Genders</option><option>Male</option><option>Female</option><option>Other</option></select>
+      <select id="reg-status" onchange="renderRegister()"><option value="Active">Active</option><option value="">All</option><option value="Archived">Archived</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr>
+        <th>Emp No</th><th style="min-width:160px">Name</th><th>Gender</th><th>Race</th>
+        <th>Cluster</th><th>Job Title</th><th>Job Grade</th><th>Type</th>
+        <th>Date Engaged</th><th>Contract End</th><th>Medical Aid</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="reg-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── MY PROFILE ── -->
+<section id="sec-profile" class="sec">
+  <div id="profile-card" style="background:var(--sur);border:1px solid var(--bdr);border-radius:var(--r);padding:20px;margin-bottom:14px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div id="profile-avatar" style="width:56px;height:56px;border-radius:50%;background:var(--st);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff;flex-shrink:0">?</div>
+    <div id="profile-info" style="flex:1"><div style="font-size:16px;font-weight:700;color:var(--tx);margin-bottom:4px" id="profile-name">Loading…</div><div style="font-size:12px;color:var(--tx2)" id="profile-role"></div></div>
+  </div>
+  <div class="g2">
+    <div class="card">
+      <div class="card-hd">My Details</div>
+      <div class="card-body" id="profile-details"></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">
+        Document Checklist
+        <button class="btn btn-pri btn-sm" onclick="openM('m-upload')">⬆ Upload Document</button>
+      </div>
+      <div class="card-body" id="profile-docs"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-hd">Submit Declaration</div>
+    <div class="card-body">
+      <p style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6">Submit your annual Conflict of Interest declaration. This is required by StudyTrust policy and must be completed by all employees.</p>
+      <button class="btn btn-am" onclick="openM('m-coi')">📋 Submit Conflict of Interest Declaration</button>
+    </div>
+  </div>
+</section>
+
+<!-- ── IR MANAGEMENT ── -->
+<section id="sec-ir" class="sec">
+  <div class="card">
+    <div class="card-hd">
+      IR Cases Register
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-pri btn-sm" onclick="openM('m-ircase')">+ New Case</button>
+        <button class="btn btn-sec btn-sm" onclick="exportXlsx('ir')">⬇ XLSX</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="ir-q" placeholder="Search cases…" oninput="renderIR()">
+      <select id="ir-type" onchange="renderIR()"><option value="">All Types</option><option>Disciplinary</option><option>Grievance</option><option>Incapacity</option><option>Appeal</option></select>
+      <select id="ir-cluster" onchange="renderIR()"><option value="">All Clusters</option></select>
+      <select id="ir-status" onchange="renderIR()"><option value="Open">Open</option><option value="">All</option><option value="Closed">Closed</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr>
+        <th>Case No</th><th>Type</th><th>Category</th><th>Employee</th>
+        <th>Cluster</th><th>Date Reported</th><th>Hearing Date</th>
+        <th>Stage</th><th>Outcome</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="ir-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── ONBOARDING ── -->
+<section id="sec-onboarding" class="sec">
+  <div class="slabel">Onboarding Pipeline</div>
+  <div class="g-kpi" id="onb-kpi"></div>
+  <div class="card">
+    <div class="card-hd">
+      Onboarding Tracker
+      <div style="display:flex;gap:7px">
+        <button class="btn btn-pri btn-sm" onclick="openM('m-onboarding')">+ New Onboarding</button>
+        <button class="btn btn-sec btn-sm" onclick="exportXlsx('onboarding')">⬇ XLSX</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="onb-q" placeholder="Search…" oninput="renderOnboarding()">
+      <select id="onb-cluster" onchange="renderOnboarding()"><option value="">All Clusters</option></select>
+      <select id="onb-status" onchange="renderOnboarding()"><option value="">All</option><option>In Progress</option><option>Completed</option><option>Escalated</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr>
+        <th>Employee</th><th>Cluster</th><th>Start Date</th><th>IT Setup</th>
+        <th>Induction</th><th>Contract Signed</th><th>30-Day Review</th>
+        <th>Probation End</th><th>Outcome</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="onb-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── BURSARY LINK ── -->
+<section id="sec-bursary" class="sec">
+  <div class="info-box info-bl" style="margin-bottom:18px">
+    <strong>Bursary Pipeline Integration</strong> — This section links personnel records to the StudyTrust bursary programme. Interns and contract employees linked to bursary clusters are tracked here.
+  </div>
+  <div class="slabel">Intern and Bursary Pipeline</div>
+  <div class="g-kpi" id="bursary-kpi"></div>
+  <div class="card">
+    <div class="card-hd">Interns and Contract Personnel by Bursary Cluster</div>
+    <div class="card-body" id="bursary-chart"></div>
+  </div>
+  <div class="card">
+    <div class="card-hd">Personnel Linked to Bursary Clusters</div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr><th>Emp No</th><th>Name</th><th>Cluster</th><th>Job Title</th><th>Type</th><th>Date Engaged</th><th>Contract End</th></tr></thead>
+      <tbody id="bursary-body"></tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ── SETTINGS ── -->
+<section id="sec-settings" class="sec">
+  <div class="slabel">Cluster Management</div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-hd">Clusters <span style="font-size:11px;color:var(--tx3);font-weight:400">(changes apply immediately across the entire system)</span></div>
+    <div class="card-body">
+      <div id="cluster-list" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="new-cluster-name" placeholder="New cluster name…" style="border:1px solid var(--bdr);border-radius:5px;padding:6px 10px;font-size:12px;flex:1;max-width:300px">
+        <button class="btn btn-gn btn-sm" onclick="addCluster()">+ Add Cluster</button>
+      </div>
+      <div style="font-size:11px;color:var(--tx3);margin-top:8px">Cluster names are stored in this browser. Export your settings as a backup after any change.</div>
+    </div>
+  </div>
+
+  <div class="slabel">Teams Webhook Notifications</div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-hd">Webhook URLs</div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6">Configure Teams incoming webhook URLs. When an HR alert is triggered or resolved, an Adaptive Card is posted to the relevant Teams channel automatically. To create a webhook: open Teams channel → ••• → Connectors → Incoming Webhook → create → copy URL.</div>
+      <div class="f-row" style="margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="background:rgba(100,220,130,.2);color:var(--gn-tx);border:1px solid #a5d6a7;border-radius:10px;padding:1px 7px;font-size:10px">HR Admin</span> HR Alerts — all events</label>
+        <div class="wh-row"><span class="wh-dot wh-empty" id="wh-hr-dot"></span><input type="url" id="wh-hr" placeholder="https://studietrust.webhook.office.com/webhookb2/…" style="flex:1;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px;font-family:monospace"><button class="btn btn-sec btn-sm" onclick="testWebhook('hr')">Test</button></div>
+      </div>
+      <div class="f-row" style="margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="background:rgba(147,197,253,.2);color:#1e40af;border:1px solid rgba(147,197,253,.3);border-radius:10px;padding:1px 7px;font-size:10px">Cluster Mgrs</span> Cluster Manager alerts — cluster-filtered</label>
+        <div class="wh-row"><span class="wh-dot wh-empty" id="wh-cluster-dot"></span><input type="url" id="wh-cluster" placeholder="https://studietrust.webhook.office.com/webhookb2/…" style="flex:1;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px;font-family:monospace"><button class="btn btn-sec btn-sm" onclick="testWebhook('cluster')">Test</button></div>
+      </div>
+      <div class="f-row" style="margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="background:rgba(241,90,41,.18);color:#7a2e0b;border:1px solid rgba(241,90,41,.4);border-radius:10px;padding:1px 7px;font-size:10px">Management</span> Management — high-level summaries only</label>
+        <div class="wh-row"><span class="wh-dot wh-empty" id="wh-mgmt-dot"></span><input type="url" id="wh-mgmt" placeholder="https://studietrust.webhook.office.com/webhookb2/…" style="flex:1;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px;font-family:monospace"><button class="btn btn-sec btn-sm" onclick="testWebhook('mgmt')">Test</button></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-pri btn-sm" onclick="saveWebhooks()">Save Webhook URLs</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="slabel">System Configuration</div>
+  <div class="card">
+    <div class="card-hd">Azure AD Group Names</div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6">These must match the exact group display names in your Azure AD tenant. Changes take effect on the next sign-in.</div>
+      <div class="f-grid" style="margin-bottom:10px">
+        <div><label style="font-size:11px;font-weight:600;color:var(--tx2);display:block;margin-bottom:4px">Super Admin Group</label><input type="text" id="cfg-superadmin" value="Dashboards - Governance-Admins" style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--tx2);display:block;margin-bottom:4px">HR Admin Group</label><input type="text" id="cfg-hradmin" value="Dashboards - HR-Authorised-Personnel" style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--tx2);display:block;margin-bottom:4px">Cluster Manager Group</label><input type="text" id="cfg-clustermgr" value="Dashboards - Personnel-ClusterManagers" style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--tx2);display:block;margin-bottom:4px">Management Group</label><input type="text" id="cfg-management" value="Dashboards - Personnel-Management" style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:var(--tx2);display:block;margin-bottom:4px">Auditor Group</label><input type="text" id="cfg-auditor" value="Dashboards - External-Auditors" style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:6px 9px;font-size:12px"></div>
+      </div>
+      <button class="btn btn-pri btn-sm" onclick="saveGroupConfig()">Save Group Names</button>
+    </div>
+  </div>
+</section>
+
+</div><!-- /content -->
+
+<div class="dash-footer">StudyTrust Personnel Hub v1.0 &nbsp;·&nbsp; 000-601 NPO &nbsp;·&nbsp; IT3895/11(T) &nbsp;·&nbsp; All personnel data is strictly confidential</div>
+
+<!-- ═══════ MODALS ═══════ -->
+
+<!-- ADD / EDIT EMPLOYEE -->
+<div class="modal-ov" id="m-employee">
+  <div class="modal modal-lg">
+    <div class="modal-hd"><span class="modal-title" id="emp-modal-title">Add Employee</span><button class="modal-x" onclick="closeM('m-employee')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="emp-sp-id">
+      <div class="slabel">Personal Information</div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Employee No *</label><input type="text" id="emp-no" placeholder="EMP001"></div>
+        <div class="f-row"><label>First Name *</label><input type="text" id="emp-first"></div>
+        <div class="f-row"><label>Last Name *</label><input type="text" id="emp-last"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Known As</label><input type="text" id="emp-known"></div>
+        <div class="f-row"><label>Date of Birth</label><input type="date" id="emp-dob"></div>
+        <div class="f-row"><label>Work Email</label><input type="email" id="emp-email"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Gender</label><select id="emp-gender"><option>Male</option><option>Female</option><option>Other</option></select></div>
+        <div class="f-row"><label>Race (EE)</label><select id="emp-race"><option>African</option><option>Asian</option><option>Coloured</option><option>Indian</option><option>White</option><option>Foreign National</option></select></div>
+        <div class="f-row"><label>Nationality</label><select id="emp-nationality"><option>South African</option><option>Foreign National</option></select></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Disabled (EE Act)</label><select id="emp-disabled"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="f-row"><label>Foreign National</label><select id="emp-foreign"><option value="false">No</option><option value="true">Yes</option></select></div>
+      </div>
+      <div class="slabel">Employment Information</div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Cluster *</label><select id="emp-cluster"></select></div>
+        <div class="f-row"><label>Job Title *</label><input type="text" id="emp-jobtitle"></div>
+        <div class="f-row"><label>Job Grade</label><input type="text" id="emp-jobgrade" placeholder="e.g. Grade 8"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Payroll Level</label><input type="text" id="emp-payroll"></div>
+        <div class="f-row"><label>Occupational Level (EE)</label><select id="emp-oclevel"><option></option><option>Top Management</option><option>Senior Management</option><option>Professionally Qualified</option><option>Skilled</option><option>Semi-Skilled</option><option>Unskilled</option></select></div>
+        <div class="f-row"><label>Cost Centre</label><input type="text" id="emp-costcentre"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Employee Type</label><select id="emp-emptype"><option>Permanent</option><option>Fixed Term</option><option>Intern</option><option>Part-Time</option></select></div>
+        <div class="f-row"><label>Employment Type</label><select id="emp-empltype"><option>Full-Time</option><option>Part-Time</option><option>Contract</option></select></div>
+        <div class="f-row"><label>Contract Type</label><select id="emp-contracttype"><option>Permanent</option><option>Fixed Term</option><option>Internship</option></select></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Date Engaged *</label><input type="date" id="emp-engaged"></div>
+        <div class="f-row"><label>Contract End Date</label><input type="date" id="emp-contractend"></div>
+        <div class="f-row"><label>Manager</label><input type="text" id="emp-manager"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Medical Aid</label><select id="emp-medaid"><option value="false">No</option><option value="true">Yes</option></select></div>
+        <div class="f-row"><label>Leave Group (Holidays)</label><input type="text" id="emp-leavehol"></div>
+        <div class="f-row"><label>Leave Entitlement (days)</label><input type="number" id="emp-leaveent" placeholder="15"></div>
+      </div>
+      <div class="f-row"><label>Status</label><select id="emp-status"><option>Active</option><option>Archived</option></select></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-employee')">Cancel</button><button class="btn btn-pri" onclick="saveEmployee()">Save Employee →</button></div>
+  </div>
+</div>
+
+<!-- ADD ALERT -->
+<div class="modal-ov" id="m-alert">
+  <div class="modal">
+    <div class="modal-hd"><span class="modal-title">Add Manual Alert</span><button class="modal-x" onclick="closeM('m-alert')">✕</button></div>
+    <div class="modal-body">
+      <div class="f-row"><label>Alert Title *</label><input type="text" id="al-title" placeholder="e.g. Contract Expiry — Smith, J — 30 days"></div>
+      <div class="f-grid">
+        <div class="f-row"><label>Alert Type</label><select id="al-type"><option>Contract Expiry</option><option>Work Permit Expiry</option><option>Missing Document</option><option>Youth Threshold</option><option>Onboarding Incomplete</option><option>Performance Overdue</option><option>Medical Aid Missing</option><option>Internship End</option><option>Conflict of Interest Overdue</option><option>Other</option></select></div>
+        <div class="f-row"><label>Priority</label><select id="al-priority"><option>High</option><option>Medium</option><option>Low</option></select></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Employee No</label><input type="text" id="al-empno"></div>
+        <div class="f-row"><label>Cluster</label><select id="al-cluster"></select></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Due Date</label><input type="date" id="al-due"></div>
+        <div class="f-row"><label>Visibility</label><select id="al-visibility"><option>HR Only</option><option>HR and Cluster Manager</option><option>Employee and Cluster Manager</option></select></div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-alert')">Cancel</button><button class="btn btn-pri" onclick="saveAlert()">Create Alert →</button></div>
+  </div>
+</div>
+
+<!-- RESOLVE / DISMISS ALERT -->
+<div class="modal-ov" id="m-resolve">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hd"><span class="modal-title" id="resolve-title">Resolve Alert</span><button class="modal-x" onclick="closeM('m-resolve')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="resolve-id">
+      <input type="hidden" id="resolve-action">
+      <div class="f-row"><label>Resolution Notes</label><textarea id="resolve-notes" rows="4" placeholder="Describe how this alert was resolved…"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-resolve')">Cancel</button><button class="btn btn-pri" onclick="confirmResolve()">Confirm →</button></div>
+  </div>
+</div>
+
+<!-- ADD IR CASE -->
+<div class="modal-ov" id="m-ircase">
+  <div class="modal modal-lg">
+    <div class="modal-hd"><span class="modal-title" id="ir-modal-title">Register New IR Case</span><button class="modal-x" onclick="closeM('m-ircase')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="ir-sp-id">
+      <div class="f-grid3">
+        <div class="f-row"><label>Case Type *</label><select id="ir-type-f"><option>Disciplinary</option><option>Grievance</option><option>Incapacity</option><option>Appeal</option></select></div>
+        <div class="f-row"><label>Category *</label><select id="ir-cat"><option>Misconduct</option><option>Poor Performance</option><option>Attendance</option><option>Substance Abuse</option><option>Insubordination</option><option>Other</option></select></div>
+        <div class="f-row"><label>Date Reported *</label><input type="date" id="ir-date"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Employee No *</label><input type="text" id="ir-empno" placeholder="EMP001"></div>
+        <div class="f-row"><label>Employee Name</label><input type="text" id="ir-empname"></div>
+        <div class="f-row"><label>Job Title</label><input type="text" id="ir-jobtitle"></div>
+      </div>
+      <div class="f-grid3">
+        <div class="f-row"><label>Cluster</label><select id="ir-cluster-f"></select></div>
+        <div class="f-row"><label>Job Grade</label><input type="text" id="ir-grade"></div>
+        <div class="f-row"><label>Reported By</label><input type="text" id="ir-reportedby"></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Hearing Date</label><input type="date" id="ir-hearing"></div>
+        <div class="f-row"><label>Current Stage</label><select id="ir-stage"><option>Investigation</option><option>Hearing</option><option>Outcome</option><option>Appeal</option><option>Closed</option></select></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Outcome</label><select id="ir-outcome"><option>Pending</option><option>Guilty</option><option>Not Guilty</option><option>Withdrawn</option></select></div>
+        <div class="f-row"><label>Sanction</label><select id="ir-sanction"><option>None</option><option>Written Warning</option><option>Final Written Warning</option><option>Suspension</option><option>Dismissal</option></select></div>
+      </div>
+      <div class="f-row"><label>Case Notes (HR Only)</label><textarea id="ir-notes" rows="3" placeholder="Running case notes…"></textarea></div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-ircase')">Cancel</button><button class="btn btn-pri" onclick="saveIRCase()">Save Case →</button></div>
+  </div>
+</div>
+
+<!-- ONBOARDING -->
+<div class="modal-ov" id="m-onboarding">
+  <div class="modal">
+    <div class="modal-hd"><span class="modal-title">Start Onboarding</span><button class="modal-x" onclick="closeM('m-onboarding')">✕</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="onb-sp-id">
+      <div class="f-grid">
+        <div class="f-row"><label>Employee No *</label><input type="text" id="onb-empno"></div>
+        <div class="f-row"><label>Employee Name</label><input type="text" id="onb-empname"></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Start Date *</label><input type="date" id="onb-start"></div>
+        <div class="f-row"><label>Cluster</label><select id="onb-cluster-f"></select></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>30-Day Review Date</label><input type="date" id="onb-30"></div>
+        <div class="f-row"><label>60-Day Review Date</label><input type="date" id="onb-60"></div>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>90-Day Review Date</label><input type="date" id="onb-90"></div>
+        <div class="f-row"><label>Probation End Date</label><input type="date" id="onb-probend"></div>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-onboarding')">Cancel</button><button class="btn btn-pri" onclick="saveOnboarding()">Start Onboarding →</button></div>
+  </div>
+</div>
+
+<!-- DOCUMENT UPLOAD -->
+<div class="modal-ov" id="m-upload">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hd"><span class="modal-title">Upload Document</span><button class="modal-x" onclick="closeM('m-upload')">✕</button></div>
+    <div class="modal-body">
+      <div class="info-box info-bl">Documents are uploaded to your restricted personnel folder in SharePoint. HR will validate and update your document status.</div>
+      <div class="f-row"><label>Document Type *</label>
+        <select id="upload-type">
+          <option>Signed Contract</option><option>Signed Job Description</option><option>Sick Note / Medical Certificate</option>
+          <option>Academic Certificate</option><option>Course Certificate</option><option>Leave Form (FR)</option>
+          <option>Work Permit</option><option>ID Document</option><option>UIF Document</option><option>Other</option>
+        </select>
+      </div>
+      <div class="f-row"><label>Notes (optional)</label><input type="text" id="upload-note" placeholder="e.g. Annual medical certificate May 2026"></div>
+      <div class="info-box info-am" style="margin-top:10px">File upload to SharePoint is configured in the Settings panel by your system administrator. Contact HR to submit documents directly if upload is not yet active.</div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-upload')">Cancel</button><button class="btn btn-pri" onclick="notifyUpload()">Notify HR →</button></div>
+  </div>
+</div>
+
+<!-- CONFLICT OF INTEREST DECLARATION -->
+<div class="modal-ov" id="m-coi">
+  <div class="modal">
+    <div class="modal-hd"><span class="modal-title">Conflict of Interest Declaration</span><button class="modal-x" onclick="closeM('m-coi')">✕</button></div>
+    <div class="modal-body">
+      <div class="info-box info-am">This declaration is required annually from all StudyTrust employees. Submitting this form notifies HR and creates a record in your personnel file.</div>
+      <div class="f-row"><label>Declaration Year *</label><input type="text" id="coi-year" value="2026"></div>
+      <div class="f-row"><label>Do you have any conflict of interest to declare?</label>
+        <select id="coi-conflict"><option value="No">No — I have no conflicts to declare</option><option value="Yes">Yes — I have a conflict to declare (details below)</option></select>
+      </div>
+      <div class="f-row"><label>Details (if applicable)</label><textarea id="coi-details" rows="3" placeholder="If you selected Yes, describe the nature of the conflict…"></textarea></div>
+      <div class="f-row"><label>I confirm that the information above is accurate and complete.</label>
+        <select id="coi-confirm"><option value="false">Select…</option><option value="true">Yes, I confirm</option></select>
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-sec" onclick="closeM('m-coi')">Cancel</button><button class="btn btn-pri" onclick="submitCOI()">Submit Declaration →</button></div>
+  </div>
+</div>
+
+<!-- COLUMN GUIDE -->
+<div class="modal-ov" id="m-guide">
+  <div class="modal modal-lg">
+    <div class="modal-hd"><span class="modal-title">SharePoint List Column Reference — Hand to Simon Letsela</span><button class="modal-x" onclick="closeM('m-guide')">✕</button></div>
+    <div class="modal-body">
+      <div class="info-box info-bl">Create 5 lists in the new SharePoint site (studietrust.sharepoint.com/sites/StudyTrustPersonnel). Use exact column names. Title exists automatically — do not recreate it.</div>
+
+      <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">PersonnelRegister</p>
+      <div class="cg"><span>Title</span><em> Text (built-in — auto-set to FirstName + LastName)</em> · <span>EmployeeNo</span><em> Text</em> · <span>FirstName</span><em> Text</em> · <span>LastName</span><em> Text</em> · <span>KnownAs</span><em> Text</em> · <span>DateOfBirth</span><em> Date</em> · <span>Gender</span><em> Choice: Male, Female, Other</em> · <span>Race</span><em> Choice: African, Asian, Coloured, Indian, White, Foreign National</em> · <span>Disabled</span><em> Yes/No</em> · <span>Nationality</span><em> Choice: South African, Foreign National</em> · <span>Cluster</span><em> Choice (all 9 clusters)</em> · <span>JobTitle</span><em> Text</em> · <span>JobGrade</span><em> Text</em> · <span>PayrollLevel</span><em> Text</em> · <span>OccupationalLevel</span><em> Choice: Top Management, Senior Management, Professionally Qualified, Skilled, Semi-Skilled, Unskilled</em> · <span>CostCentre</span><em> Text</em> · <span>EmployeeType</span><em> Choice: Permanent, Fixed Term, Intern, Part-Time</em> · <span>EmploymentType</span><em> Choice: Full-Time, Part-Time, Contract</em> · <span>ContractType</span><em> Choice: Permanent, Fixed Term, Internship</em> · <span>DateEngaged</span><em> Date</em> · <span>ContractEndDate</span><em> Date</em> · <span>LeaveGroupHolidays</span><em> Text</em> · <span>LeaveGroupWorkDays</span><em> Text</em> · <span>LeaveGroupEntitlement</span><em> Number</em> · <span>ManagerName</span><em> Text</em> · <span>WorkEmail</span><em> Text</em> · <span>MedicalAid</span><em> Yes/No</em> · <span>ForeignNational</span><em> Yes/No</em> · <span>LastPayrollUpdate</span><em> Date</em> · <span>Active</span><em> Yes/No (default: Yes)</em> · <span>Status</span><em> Choice: Active, Archived</em></div>
+
+      <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">PersonnelAlerts</p>
+      <div class="cg"><span>Title</span><em> Text (built-in = alert title)</em> · <span>AlertType</span><em> Choice: Contract Expiry, Work Permit Expiry, Missing Document, Youth Threshold, Onboarding Incomplete, Performance Overdue, Medical Aid Missing, Internship End, Conflict of Interest Overdue, Other</em> · <span>EmployeeNo</span><em> Text</em> · <span>EmployeeName</span><em> Text</em> · <span>Cluster</span><em> Text</em> · <span>TriggerDate</span><em> Date</em> · <span>DueDate</span><em> Date</em> · <span>Priority</span><em> Choice: High, Medium, Low</em> · <span>Visibility</span><em> Choice: HR Only, HR and Cluster Manager, Employee and Cluster Manager</em> · <span>AssignedTo</span><em> Text</em> · <span>Status</span><em> Choice: Active, Resolved, Dismissed</em> · <span>ResolutionNotes</span><em> Note</em> · <span>ResolvedDate</span><em> Date</em></div>
+
+      <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">PersonnelIR</p>
+      <div class="cg"><span>Title</span><em> Text (built-in = case number, format IR-YYYY-NNN)</em> · <span>CaseType</span><em> Choice: Disciplinary, Grievance, Incapacity, Appeal</em> · <span>Category</span><em> Choice: Misconduct, Poor Performance, Attendance, Substance Abuse, Insubordination, Other</em> · <span>EmployeeNo</span><em> Text</em> · <span>EmployeeName</span><em> Text</em> · <span>JobTitle</span><em> Text</em> · <span>Cluster</span><em> Text</em> · <span>JobGrade</span><em> Text</em> · <span>PayrollLevel</span><em> Text</em> · <span>DateReported</span><em> Date</em> · <span>ReportedBy</span><em> Text</em> · <span>HearingDate</span><em> Date</em> · <span>CurrentStage</span><em> Choice: Investigation, Hearing, Outcome, Appeal, Closed</em> · <span>Outcome</span><em> Choice: Pending, Guilty, Not Guilty, Withdrawn</em> · <span>Sanction</span><em> Choice: None, Written Warning, Final Written Warning, Suspension, Dismissal</em> · <span>CaseNotes</span><em> Note</em> · <span>Status</span><em> Choice: Open, Pending, Closed</em></div>
+
+      <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">PersonnelOnboarding</p>
+      <div class="cg"><span>Title</span><em> Text (built-in = EmployeeNo)</em> · <span>EmployeeNo</span><em> Text</em> · <span>EmployeeName</span><em> Text</em> · <span>Cluster</span><em> Text</em> · <span>StartDate</span><em> Date</em> · <span>ITSetup</span><em> Yes/No</em> · <span>InductionComplete</span><em> Yes/No</em> · <span>PolicyAcknowledgement</span><em> Yes/No</em> · <span>ContractSigned</span><em> Yes/No</em> · <span>Review30Date</span><em> Date</em> · <span>Review60Date</span><em> Date</em> · <span>Review90Date</span><em> Date</em> · <span>ProbationEndDate</span><em> Date</em> · <span>ProbationOutcome</span><em> Choice: Pending, Confirmed, Extended, Terminated</em> · <span>ManagerSignOff</span><em> Yes/No</em> · <span>OverallStatus</span><em> Choice: In Progress, Completed, Escalated</em></div>
+
+      <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">PersonnelCOI (Conflict of Interest declarations)</p>
+      <div class="cg"><span>Title</span><em> Text (built-in = EmployeeNo + Year)</em> · <span>EmployeeNo</span><em> Text</em> · <span>EmployeeName</span><em> Text</em> · <span>DeclarationYear</span><em> Text</em> · <span>HasConflict</span><em> Choice: Yes, No</em> · <span>ConflictDetails</span><em> Note</em> · <span>SubmittedDate</span><em> Date</em> · <span>SubmittedBy</span><em> Text (email)</em></div>
+
+      <div class="info-box info-am" style="margin-top:10px;margin-bottom:0">
+        <strong>Permissions:</strong> Break inheritance on PersonnelIR and PersonnelCOI lists. Grant access only to Dashboards - Governance-Admins and Dashboards - HR-Authorised-Personnel. All other groups should have no access to these two lists.
+      </div>
+    </div>
+    <div class="modal-actions"><button class="btn btn-pri" onclick="closeM('m-guide')">Close</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════
+// CONFIGURATION
+// ════════════════════════════════════════════
+const CLIENT_ID   = 'c5c93f6e-957d-431f-8e83-ff22e7be10a9';
+const REDIRECT_URI = 'https://studytrust.github.io/auth.html';
+const SP_HOST     = 'studietrust.sharepoint.com';
+const SP_PATH     = '/sites/StudyTrustPersonnel';
+const TENANT      = 'studietrust.onmicrosoft.com';
+const GRAPH       = 'https://graph.microsoft.com/v1.0';
+
+const LISTS = {
+  personnel:  'PersonnelRegister',
+  alerts:     'PersonnelAlerts',
+  ir:         'PersonnelIR',
+  onboarding: 'PersonnelOnboarding',
+  coi:        'PersonnelCOI'
+};
+
+const DEFAULT_CLUSTERS = [
+  'Directorate',
+  'CSI Bursaries',
+  'Operations',
+  'First Rand Foundation Bursaries',
+  'Recruitment Bursaries',
+  'Finance',
+  'Skills Development Bursaries',
+  'FADS Bursaries',
+  'Renewable Energy Bursaries'
+];
+
+const BURSARY_CLUSTERS = [
+  'CSI Bursaries','First Rand Foundation Bursaries','Recruitment Bursaries',
+  'Skills Development Bursaries','FADS Bursaries','Renewable Energy Bursaries'
+];
+
+const DEFAULT_GROUPS = {
+  superAdmin: 'Dashboards - Governance-Admins',
+  hrAdmin:    'Dashboards - HR-Authorised-Personnel',
+  clusterMgr: 'Dashboards - Personnel-ClusterManagers',
+  management: 'Dashboards - Personnel-Management',
+  auditor:    'Dashboards - External-Auditors'
+};
+
+// ════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════
+let msalInstance, accessToken;
+let currentRole  = 'employee';
+let currentUser  = { name:'', email:'' };
+let userCluster  = null; // for cluster manager filtering
+let appData      = { personnel:[], alerts:[], ir:[], onboarding:[], coi:[] };
+let clusters     = [];
+let groups       = {};
+let webhooks     = { hr:'', cluster:'', mgmt:'' };
+let notifItems   = [];
+let showArchive  = false;
+
+// ════════════════════════════════════════════
+// MSAL
+// ════════════════════════════════════════════
+const MSAL_CFG = {
+  auth:{ clientId:CLIENT_ID, authority:`https://login.microsoftonline.com/${TENANT}`, redirectUri:REDIRECT_URI },
+  cache:{ cacheLocation:'sessionStorage', storeAuthStateInCookie:true }
+};
+
+const SCOPES = ['User.Read','Sites.ReadWrite.All'];
+
+async function doSignIn(){
+  const btn = document.querySelector('.si-btn');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const res = await msalInstance.loginPopup({ scopes: SCOPES });
+    msalInstance.setActiveAccount(res.account);
+    await afterSignIn();
+  } catch(e) {
+    const el = document.getElementById('si-err');
+    el.textContent = e.message || 'Sign-in failed. Please try again.';
+    el.classList.add('show');
+    btn.disabled = false; btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 21 21" fill="none"><rect width="10" height="10" fill="#F25022"/><rect x="11" width="10" height="10" fill="#7FBA00"/><rect y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg> Sign in with Microsoft';
+  }
+}
+
+function doSignOut(){
+  msalInstance.logoutPopup();
+}
+
+async function getToken(){
+  const acct = msalInstance.getActiveAccount();
+  if(!acct) throw new Error('Not signed in');
+  try {
+    const res = await msalInstance.acquireTokenSilent({ scopes:SCOPES, account:acct });
+    return res.accessToken;
+  } catch(e) {
+    const res = await msalInstance.acquireTokenPopup({ scopes:SCOPES, account:acct });
+    return res.accessToken;
+  }
+}
+
+async function afterSignIn(){
+  document.getElementById('signin-screen').classList.add('hidden');
+  showLoad('Detecting your access level…');
+  try {
+    accessToken  = await getToken();
+    const me     = await graphFetch('/me');
+    currentUser  = { name: me.displayName||'', email: me.mail||me.userPrincipalName||'' };
+    document.getElementById('user-name').textContent = currentUser.name;
+
+    loadConfig();
+    await detectRole();
+    showLoad('Loading personnel data…');
+    await loadAllData();
+    hideLoad();
+    buildTabs();
+    buildClusterDropdowns();
+    renderAll();
+    document.getElementById('btn-guide').style.display = (currentRole==='superAdmin'||currentRole==='hrAdmin') ? 'inline-flex' : 'none';
+  } catch(e) {
+    hideLoad();
+    alert('Error loading data: ' + e.message);
+  }
+}
+
+// ════════════════════════════════════════════
+// GRAPH API
+// ════════════════════════════════════════════
+async function graphFetch(url, opts={}){
+  if(!accessToken) accessToken = await getToken();
+  const fullUrl = url.startsWith('http') ? url : GRAPH + url;
+  const res = await fetch(fullUrl, {
+    headers:{ Authorization:`Bearer ${accessToken}`, 'Content-Type':'application/json', ...opts.headers },
+    ...opts
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  if(res.status===204) return null;
+  return res.json();
+}
+
+let _siteId = null;
+async function getSiteId(){
+  if(_siteId) return _siteId;
+  const d = await graphFetch(`/sites/${SP_HOST}:${SP_PATH}`);
+  _siteId = d.id;
+  return _siteId;
+}
+
+async function spList(listName, filter='', select=''){
+  const sid = await getSiteId();
+  let url = `/sites/${sid}/lists/${listName}/items?$expand=fields&$top=5000`;
+  if(filter) url += `&$filter=${encodeURIComponent(filter)}`;
+  if(select) url += `&$select=${select}`;
+  const items = [];
+  let next = url;
+  while(next){
+    const d = await graphFetch(next);
+    items.push(...(d.value||[]));
+    next = d['@odata.nextLink'] || null;
+  }
+  return items.map(i=>({_spId:i.id,...i.fields}));
+}
+
+async function spPost(listName, fields){
+  const sid = await getSiteId();
+  return graphFetch(`/sites/${sid}/lists/${listName}/items`,{method:'POST',body:JSON.stringify({fields})});
+}
+
+async function spPatch(listName, itemId, fields){
+  const sid = await getSiteId();
+  return graphFetch(`/sites/${sid}/lists/${listName}/items/${itemId}`,{method:'PATCH',body:JSON.stringify({fields})});
+}
+
+async function spDelete(listName, itemId){
+  const sid = await getSiteId();
+  return graphFetch(`/sites/${sid}/lists/${listName}/items/${itemId}`,{method:'DELETE'});
+}
+
+// ════════════════════════════════════════════
+// ROLE DETECTION
+// ════════════════════════════════════════════
+async function detectRole(){
+  const grpData = await graphFetch('/me/memberOf?$select=displayName&$top=200').catch(()=>({value:[]}));
+  const memberOf = (grpData.value||[]).map(g=>(g.displayName||'').toLowerCase());
+  const g = groups;
+
+  if(memberOf.includes(g.superAdmin.toLowerCase())) currentRole = 'superAdmin';
+  else if(memberOf.includes(g.hrAdmin.toLowerCase())) currentRole = 'hrAdmin';
+  else if(memberOf.includes(g.clusterMgr.toLowerCase())) currentRole = 'clusterMgr';
+  else if(memberOf.includes(g.management.toLowerCase())) currentRole = 'management';
+  else if(memberOf.includes(g.auditor.toLowerCase())) currentRole = 'auditor';
+  else currentRole = 'employee';
+
+  // For cluster manager: determine their cluster from email/name mapping in localStorage
+  if(currentRole === 'clusterMgr'){
+    const mapping = JSON.parse(localStorage.getItem('ph_cluster_mapping')||'{}');
+    userCluster = mapping[currentUser.email] || null;
+  }
+
+  applyRole();
+}
+
+function applyRole(){
+  const roleConfig = {
+    superAdmin:{ label:'Super Admin — Full System Access', banner:'ban-superadmin', badge:'rb-superadmin' },
+    hrAdmin:   { label:'HR Admin — Full Personnel Access', banner:'ban-hradmin', badge:'rb-hradmin' },
+    clusterMgr:{ label:`Cluster Manager${userCluster?' — '+userCluster:''}`, banner:'ban-clustermgr', badge:'rb-clustermgr' },
+    management:{ label:'Management — Overview and Analytics', banner:'ban-management', badge:'rb-management' },
+    auditor:   { label:'Auditor — Read-Only Access', banner:'ban-auditor', badge:'rb-auditor' },
+    employee:  { label:'Employee — My Profile', banner:'ban-employee', badge:'rb-employee' }
+  };
+  const cfg = roleConfig[currentRole];
+  const banner = document.getElementById('role-banner');
+  const badge  = document.getElementById('role-badge');
+  banner.className = cfg.banner;
+  banner.textContent = cfg.label;
+  badge.className = 'role-badge ' + cfg.badge;
+  badge.textContent = cfg.label.split(' — ')[0];
+}
+
+function canHR(){ return currentRole==='superAdmin'||currentRole==='hrAdmin'; }
+function canAdmin(){ return currentRole==='superAdmin'; }
+function canView(){ return canHR()||currentRole==='clusterMgr'||currentRole==='management'; }
+
+// ════════════════════════════════════════════
+// DATA LOADING
+// ════════════════════════════════════════════
+async function loadAllData(){
+  try { appData.personnel = await spList(LISTS.personnel); } catch(e){ console.warn('PersonnelRegister:',e.message); }
+  if(canHR()||currentRole==='clusterMgr'){
+    try { appData.alerts = await spList(LISTS.alerts); } catch(e){ console.warn('PersonnelAlerts:',e.message); }
+  }
+  if(canHR()){
+    try { appData.ir = await spList(LISTS.ir); } catch(e){ console.warn('PersonnelIR:',e.message); }
+    try { appData.onboarding = await spList(LISTS.onboarding); } catch(e){ console.warn('PersonnelOnboarding:',e.message); }
+  }
+}
+
+// ════════════════════════════════════════════
+// TABS
+// ════════════════════════════════════════════
+function buildTabs(){
+  const allTabs = [
+    { id:'sec-overview',   label:'📊 Overview',    roles:['superAdmin','hrAdmin','clusterMgr','management'] },
+    { id:'sec-analytics',  label:'📈 Analytics',   roles:['superAdmin','hrAdmin','management'] },
+    { id:'sec-alerts',     label:'🚨 Alerts',      roles:['superAdmin','hrAdmin','clusterMgr'], badge:true },
+    { id:'sec-directory',  label:'👥 Directory',   roles:['superAdmin','hrAdmin','clusterMgr','management','employee'] },
+    { id:'sec-register',   label:'📋 Register',    roles:['superAdmin','hrAdmin'] },
+    { id:'sec-profile',    label:'👤 My Profile',  roles:['superAdmin','hrAdmin','clusterMgr','management','employee'] },
+    { id:'sec-ir',         label:'⚖️ IR Cases',    roles:['superAdmin','hrAdmin'] },
+    { id:'sec-onboarding', label:'🟡 Onboarding',  roles:['superAdmin','hrAdmin','clusterMgr'] },
+    { id:'sec-bursary',    label:'🎓 Bursary',     roles:['superAdmin','hrAdmin'] },
+    { id:'sec-settings',   label:'⚙️ Settings',    roles:['superAdmin','hrAdmin'] }
+  ];
+
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  let first = null;
+  allTabs.forEach(t=>{
+    if(!t.roles.includes(currentRole)) return;
+    if(!first) first = t.id;
+    const btn = document.createElement('button');
+    btn.className = 'tab';
+    btn.dataset.sec = t.id;
+    const activeAlerts = appData.alerts.filter(a=>a.Status==='Active').length;
+    const badgeHtml = t.badge && activeAlerts > 0
+      ? ` <span class="tab-count">${activeAlerts}</span>` : '';
+    btn.innerHTML = t.label + badgeHtml;
+    btn.onclick = ()=>showTab(t.id);
+    bar.appendChild(btn);
+  });
+  if(first) showTab(first);
+}
+
+function showTab(id){
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  const sec = document.getElementById(id);
+  if(sec) sec.classList.add('on');
+  document.querySelectorAll('.tab').forEach(t=>{ if(t.dataset.sec===id) t.classList.add('on'); });
+  // Render on demand
+  const renders = {
+    'sec-overview':   renderOverview,
+    'sec-analytics':  renderAnalytics,
+    'sec-alerts':     renderAlerts,
+    'sec-directory':  renderDirectory,
+    'sec-register':   renderRegister,
+    'sec-profile':    renderProfile,
+    'sec-ir':         renderIR,
+    'sec-onboarding': renderOnboarding,
+    'sec-bursary':    renderBursary,
+    'sec-settings':   renderSettings
+  };
+  if(renders[id]) renders[id]();
+}
+
+// ════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════
+function getPersonnel(includeArchived=false){
+  let data = appData.personnel;
+  if(currentRole==='clusterMgr' && userCluster) data = data.filter(p=>p.Cluster===userCluster);
+  if(!includeArchived) data = data.filter(p=>p.Status!=='Archived'&&p.Active!==false);
+  return data;
+}
+
+function pct(n, total){ return total ? Math.round(n/total*100) : 0; }
+function fmt(d){ if(!d) return '—'; return new Date(d).toLocaleDateString('en-ZA'); }
+function daysFrom(d){ if(!d) return null; return Math.round((new Date(d)-new Date())/864e5); }
+function initials(name='?'){ return name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); }
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function priorityBadge(p){
+  const cls = p==='High'?'br':p==='Medium'?'ba':'bg';
+  return `<span class="bd ${cls}">${escHtml(p)}</span>`;
+}
+function statusBadge(s){
+  const cls = s==='Active'?'br':s==='Resolved'?'bg':s==='Open'?'ba':s==='Closed'?'bgy':'bb';
+  return `<span class="bd ${cls}">${escHtml(s||'—')}</span>`;
+}
+
+// ════════════════════════════════════════════
+// RENDER — OVERVIEW
+// ════════════════════════════════════════════
+function renderOverview(){
+  const data = getPersonnel();
+  const total = data.length;
+  const males  = data.filter(p=>p.Gender==='Male').length;
+  const females= data.filter(p=>p.Gender==='Female').length;
+  const interns= data.filter(p=>p.EmployeeType==='Intern').length;
+  const today  = new Date();
+  const youth  = data.filter(p=>{ if(!p.DateOfBirth) return false; const a=Math.floor((today-new Date(p.DateOfBirth))/3156e7); return a<35; }).length;
+  const avgAge = total ? Math.round(data.reduce((s,p)=>{ if(!p.DateOfBirth) return s; return s+Math.floor((today-new Date(p.DateOfBirth))/3156e7); },0)/data.filter(p=>p.DateOfBirth).length)||0 : 0;
+  const medAid = data.filter(p=>p.MedicalAid===true||p.MedicalAid==='true'||p.MedicalAid===1).length;
+  const foreign= data.filter(p=>p.ForeignNational===true||p.ForeignNational==='true'||p.ForeignNational===1).length;
+  const activeAlerts = appData.alerts.filter(a=>a.Status==='Active').length;
+
+  document.getElementById('kpi-grid').innerHTML = [
+    { l:'Total Personnel', v:total, s:'Active employees', cls:'hl' },
+    { l:'Male / Female', v:`${males} / ${females}`, s:`${pct(females,total)}% female`, cls:'' },
+    { l:'Interns', v:interns, s:`${pct(interns,total)}% of total`, cls:'kpi-am' },
+    { l:'Youth (Under 35)', v:youth, s:`${pct(youth,total)}% of total`, cls:'kpi-gn' },
+    { l:'Average Age', v:avgAge||'—', s:'years', cls:'' },
+    { l:'Medical Aid', v:medAid, s:`${pct(medAid,total)}% enrolled`, cls:'kpi-gn' },
+    { l:'Foreign Nationals', v:foreign, s:`${pct(foreign,total)}% of total`, cls:foreign>0?'kpi-am':'' },
+    { l:'Active HR Alerts', v:activeAlerts, s:'requiring action', cls:activeAlerts>0?'kpi-rd':'' }
+  ].map(k=>`<div class="kpi ${k.cls}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div><div class="kpi-s">${k.s}</div></div>`).join('');
+
+  // Cluster chart
+  const clusterEl = document.getElementById('cluster-chart');
+  const clusterMap = {};
+  clusters.forEach(c=>clusterMap[c]=0);
+  data.forEach(p=>{ if(p.Cluster) clusterMap[p.Cluster]=(clusterMap[p.Cluster]||0)+1; });
+  clusterEl.innerHTML = clusters.map(c=>{
+    const n = clusterMap[c]||0;
+    return `<div class="prog-row"><div class="prog-meta"><span>${escHtml(c)}</span><span><strong>${n}</strong></span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct(n,total)}%"></div></div></div>`;
+  }).join('');
+
+  // Employment chart
+  const types = ['Permanent','Fixed Term','Intern','Part-Time'];
+  document.getElementById('employment-chart').innerHTML = types.map(t=>{
+    const n = data.filter(p=>p.EmployeeType===t).length;
+    return `<div class="prog-row"><div class="prog-meta"><span>${t}</span><span><strong>${n}</strong> (${pct(n,total)}%)</span></div><div class="prog-bar"><div class="prog-fill ${t==='Intern'?'am':''}" style="width:${pct(n,total)}%"></div></div></div>`;
+  }).join('');
+
+  // Race/EE chart
+  const races = ['African','Coloured','Indian','Asian','White','Foreign National'];
+  document.getElementById('race-chart').innerHTML = races.map(r=>{
+    const n = data.filter(p=>p.Race===r).length;
+    return `<div class="prog-row"><div class="prog-meta"><span>${r}</span><span><strong>${n}</strong> (${pct(n,total)}%)</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct(n,total)}%"></div></div></div>`;
+  }).join('');
+
+  // Alert badge
+  const alertBadge = document.getElementById('alert-badge');
+  alertBadge.textContent = activeAlerts;
+  alertBadge.style.display = activeAlerts ? 'inline-block' : 'none';
+
+  // Overview alerts (top 5 high priority)
+  const topAlerts = appData.alerts.filter(a=>a.Status==='Active').sort((a,b)=>{ const p={High:0,Medium:1,Low:2}; return (p[a.Priority]||2)-(p[b.Priority]||2); }).slice(0,5);
+  document.getElementById('overview-alerts').innerHTML = topAlerts.length
+    ? topAlerts.map(a=>`<div style="padding:8px 0;border-bottom:1px solid var(--bdr);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><div><div style="font-size:12px;font-weight:600">${escHtml(a.Title)}</div><div style="font-size:11px;color:var(--tx3)">${escHtml(a.AlertType||'')} · ${escHtml(a.Cluster||'')}</div></div>${priorityBadge(a.Priority)}</div>`).join('')
+    : '<div style="font-size:12px;color:var(--tx3);padding:10px 0">No active alerts.</div>';
+
+  buildNotifications();
+}
+
+// ════════════════════════════════════════════
+// RENDER — ANALYTICS
+// ════════════════════════════════════════════
+function renderAnalytics(){
+  const data = getPersonnel();
+  const total = data.length;
+  const today = new Date();
+
+  // KPIs
+  const permanent = data.filter(p=>p.EmployeeType==='Permanent').length;
+  const fixedTerm = data.filter(p=>p.EmployeeType==='Fixed Term').length;
+  const interns   = data.filter(p=>p.EmployeeType==='Intern').length;
+  const african   = data.filter(p=>p.Race==='African').length;
+  document.getElementById('analytics-kpi').innerHTML = [
+    { l:'Permanent', v:permanent, s:`${pct(permanent,total)}%` },
+    { l:'Fixed Term', v:fixedTerm, s:`${pct(fixedTerm,total)}%` },
+    { l:'Interns', v:interns, s:`${pct(interns,total)}%` },
+    { l:'African (EE)', v:african, s:`${pct(african,total)}%` },
+    { l:'Total Headcount', v:total, s:'active' }
+  ].map(k=>`<div class="kpi"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div><div class="kpi-s">${k.s}</div></div>`).join('');
+
+  // Gender by cluster
+  document.getElementById('gender-cluster-chart').innerHTML = clusters.map(c=>{
+    const cData = data.filter(p=>p.Cluster===c);
+    const m = cData.filter(p=>p.Gender==='Male').length;
+    const f = cData.filter(p=>p.Gender==='Female').length;
+    const ct = cData.length;
+    if(!ct) return '';
+    return `<div class="prog-row"><div class="prog-meta"><span>${escHtml(c)}</span><span style="font-size:11px;color:var(--tx3)">M:${m} F:${f}</span></div><div class="gender-bar" style="height:10px;border-radius:5px;overflow:hidden;background:var(--bg)"><div class="gender-m" style="width:${pct(m,ct)}%;height:100%;display:inline-block"></div><div class="gender-f" style="width:${pct(f,ct)}%;height:100%;display:inline-block"></div></div></div>`;
+  }).join('');
+
+  // Job grades
+  const grades = {};
+  data.forEach(p=>{ if(p.JobGrade) grades[p.JobGrade]=(grades[p.JobGrade]||0)+1; });
+  document.getElementById('grade-chart').innerHTML = Object.entries(grades).sort((a,b)=>b[1]-a[1]).map(([g,n])=>
+    `<div class="prog-row"><div class="prog-meta"><span>${escHtml(g)}</span><span>${n} (${pct(n,total)}%)</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct(n,total)}%"></div></div></div>`).join('') || '<div style="font-size:12px;color:var(--tx3)">No job grade data available.</div>';
+
+  // Age brackets
+  const brackets = [[18,25,'18-24'],[25,35,'25-34'],[35,45,'35-44'],[45,55,'45-54'],[55,100,'55+']];
+  document.getElementById('age-chart').innerHTML = brackets.map(([lo,hi,lbl])=>{
+    const n = data.filter(p=>{ if(!p.DateOfBirth) return false; const a=Math.floor((today-new Date(p.DateOfBirth))/3156e7); return a>=lo&&a<hi; }).length;
+    return `<div class="prog-row"><div class="prog-meta"><span>${lbl}</span><span>${n} (${pct(n,total)}%)</span></div><div class="prog-bar"><div class="prog-fill ${lo<35?'gn':''}" style="width:${pct(n,total)}%"></div></div></div>`;
+  }).join('');
+
+  // Contract types
+  const contractTypes = ['Permanent','Fixed Term','Internship'];
+  document.getElementById('contract-chart').innerHTML = contractTypes.map(t=>{
+    const n = data.filter(p=>p.ContractType===t).length;
+    return `<div class="prog-row"><div class="prog-meta"><span>${t}</span><span>${n} (${pct(n,total)}%)</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct(n,total)}%"></div></div></div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — ALERTS
+// ════════════════════════════════════════════
+function renderAlerts(){
+  document.getElementById('btn-add-alert').style.display = canHR() ? 'inline-flex' : 'none';
+  populateSelect('alert-cluster', clusters);
+  populateSelect('al-cluster', clusters);
+
+  let data = appData.alerts;
+  if(currentRole==='clusterMgr' && userCluster) data = data.filter(a=>a.Cluster===userCluster||a.Visibility!=='HR Only');
+
+  const q   = (document.getElementById('alert-q')?.value||'').toLowerCase();
+  const type= document.getElementById('alert-type')?.value||'';
+  const pri = document.getElementById('alert-priority')?.value||'';
+  const cls = document.getElementById('alert-cluster')?.value||'';
+  const sts = document.getElementById('alert-status')?.value||'Active';
+
+  data = data.filter(a=>{
+    if(q && !JSON.stringify(a).toLowerCase().includes(q)) return false;
+    if(type && a.AlertType!==type) return false;
+    if(pri && a.Priority!==pri) return false;
+    if(cls && a.Cluster!==cls) return false;
+    if(sts && a.Status!==sts) return false;
+    return true;
+  }).sort((a,b)=>{ const p={High:0,Medium:1,Low:2}; return (p[a.Priority]||2)-(p[b.Priority]||2); });
+
+  const tbody = document.getElementById('alerts-body');
+  if(!data.length){ tbody.innerHTML=`<tr><td colspan="9" style="text-align:center;color:var(--tx3);padding:20px">No alerts found.</td></tr>`; return; }
+
+  tbody.innerHTML = data.map(a=>{
+    const days = daysFrom(a.DueDate);
+    const daysStr = days===null?'—':days<0?`<span style="color:var(--rd-tx);font-weight:600">${Math.abs(days)}d overdue</span>`:`${days}d`;
+    const canAct = canHR();
+    return `<tr>
+      <td style="font-weight:600;font-size:12px">${escHtml(a.Title)}</td>
+      <td><span class="bd bb">${escHtml(a.AlertType||'—')}</span></td>
+      <td>${escHtml(a.EmployeeName||a.EmployeeNo||'—')}</td>
+      <td>${escHtml(a.Cluster||'—')}</td>
+      <td>${fmt(a.DueDate)}</td>
+      <td>${daysStr}</td>
+      <td>${priorityBadge(a.Priority)}</td>
+      <td>${statusBadge(a.Status)}</td>
+      <td>${canAct && a.Status==='Active' ? `<button class="btn btn-gn btn-sm" onclick="resolveAlert('${a._spId}','Resolved')">✓ Resolve</button> <button class="btn btn-sec btn-sm" onclick="resolveAlert('${a._spId}','Dismissed')">Dismiss</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — DIRECTORY
+// ════════════════════════════════════════════
+function renderDirectory(){
+  populateSelect('dir-cluster', clusters);
+  let data = getPersonnel();
+  const q   = (document.getElementById('dir-q')?.value||'').toLowerCase();
+  const cls = document.getElementById('dir-cluster')?.value||'';
+  const typ = document.getElementById('dir-type')?.value||'';
+  const gen = document.getElementById('dir-gender')?.value||'';
+
+  data = data.filter(p=>{
+    const str = `${p.FirstName} ${p.LastName} ${p.KnownAs||''} ${p.JobTitle||''}`.toLowerCase();
+    if(q && !str.includes(q)) return false;
+    if(cls && p.Cluster!==cls) return false;
+    if(typ && p.EmployeeType!==typ) return false;
+    if(gen && p.Gender!==gen) return false;
+    return true;
+  }).sort((a,b)=>((a.LastName||'')+(a.FirstName||'')).localeCompare((b.LastName||'')+(b.FirstName||'')));
+
+  document.getElementById('dir-count').textContent = `${data.length} employee${data.length!==1?'s':''}`;
+  const tbody = document.getElementById('dir-body');
+  if(!data.length){ tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:20px">No employees found.</td></tr>`; return; }
+  tbody.innerHTML = data.map(p=>`<tr>
+    <td style="font-weight:600">${escHtml((p.FirstName||'')+' '+(p.LastName||''))}</td>
+    <td>${escHtml(p.KnownAs||'—')}</td>
+    <td>${escHtml(p.JobTitle||'—')}</td>
+    <td>${escHtml(p.Cluster||'—')}</td>
+    <td><span class="bd bgy">${escHtml(p.EmployeeType||'—')}</span></td>
+    <td>${p.WorkEmail?`<a href="mailto:${escHtml(p.WorkEmail)}" style="color:var(--st);font-size:11px">${escHtml(p.WorkEmail)}</a>`:'—'}</td>
+    <td>${escHtml(p.ManagerName||'—')}</td>
+  </tr>`).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — PERSONNEL REGISTER
+// ════════════════════════════════════════════
+function renderRegister(){
+  populateSelect('reg-cluster', clusters);
+  const q   = (document.getElementById('reg-q')?.value||'').toLowerCase();
+  const cls = document.getElementById('reg-cluster')?.value||'';
+  const typ = document.getElementById('reg-type')?.value||'';
+  const gen = document.getElementById('reg-gender')?.value||'';
+  const sts = document.getElementById('reg-status')?.value||'Active';
+
+  let data = appData.personnel.filter(p=>{
+    const str = JSON.stringify(p).toLowerCase();
+    if(q && !str.includes(q)) return false;
+    if(cls && p.Cluster!==cls) return false;
+    if(typ && p.EmployeeType!==typ) return false;
+    if(gen && p.Gender!==gen) return false;
+    if(sts==='Active' && p.Status==='Archived') return false;
+    if(sts==='Archived' && p.Status!=='Archived') return false;
+    return true;
+  }).sort((a,b)=>(a.EmployeeNo||'').localeCompare(b.EmployeeNo||'')));
+
+  document.getElementById('reg-prog').textContent = `${data.length} employee${data.length!==1?'s':''}`;
+  const tbody = document.getElementById('reg-body');
+  if(!data.length){ tbody.innerHTML=`<tr><td colspan="13" style="text-align:center;color:var(--tx3);padding:20px">No employees found.</td></tr>`; return; }
+  tbody.innerHTML = data.map(p=>{
+    const cEnd = daysFrom(p.ContractEndDate);
+    const cEndStr = p.ContractEndDate ? (cEnd!==null&&cEnd<30?`<span style="color:var(--rd-tx);font-weight:600">${fmt(p.ContractEndDate)}</span>`:fmt(p.ContractEndDate)) : '—';
+    return `<tr>
+      <td style="font-weight:700;color:var(--st)">${escHtml(p.EmployeeNo||'—')}</td>
+      <td><strong>${escHtml((p.FirstName||'')+' '+(p.LastName||''))}</strong>${p.KnownAs?`<div style="font-size:10px;color:var(--tx3)">"${escHtml(p.KnownAs)}"</div>`:''}</td>
+      <td>${escHtml(p.Gender||'—')}</td>
+      <td>${escHtml(p.Race||'—')}</td>
+      <td>${escHtml(p.Cluster||'—')}</td>
+      <td>${escHtml(p.JobTitle||'—')}</td>
+      <td>${escHtml(p.JobGrade||'—')}</td>
+      <td><span class="bd bgy">${escHtml(p.EmployeeType||'—')}</span></td>
+      <td>${fmt(p.DateEngaged)}</td>
+      <td>${cEndStr}</td>
+      <td>${p.MedicalAid===true||p.MedicalAid==='true'||p.MedicalAid===1?'<span class="bd bg">Yes</span>':'<span class="bd bgy">No</span>'}</td>
+      <td>${statusBadge(p.Status||'Active')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sec btn-sm" onclick="editEmployee('${p._spId}')">Edit</button>
+        ${p.Status!=='Archived'?`<button class="btn btn-am btn-sm" onclick="archiveEmployee('${p._spId}')">Archive</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — MY PROFILE
+// ════════════════════════════════════════════
+function renderProfile(){
+  const me = appData.personnel.find(p=>
+    (p.WorkEmail||'').toLowerCase()===currentUser.email.toLowerCase()
+  );
+  const initStr = initials(currentUser.name);
+  document.getElementById('profile-avatar').textContent = initStr;
+  document.getElementById('profile-name').textContent = currentUser.name || 'Unknown';
+  document.getElementById('profile-role').textContent = `${me?me.JobTitle||'':''} ${me&&me.Cluster?'· '+me.Cluster:''}`;
+
+  if(me){
+    document.getElementById('profile-details').innerHTML = [
+      ['Employee No', me.EmployeeNo],['Known As', me.KnownAs],['Cluster', me.Cluster],
+      ['Job Grade', me.JobGrade],['Payroll Level', me.PayrollLevel],['Employment Type', me.EmployeeType],
+      ['Date Engaged', fmt(me.DateEngaged)],['Manager', me.ManagerName],['Medical Aid', me.MedicalAid?'Yes':'No'],
+      ['Nationality', me.Nationality]
+    ].map(([l,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bdr);font-size:12px"><span style="color:var(--tx2)">${l}</span><span style="font-weight:600">${escHtml(v||'—')}</span></div>`).join('');
+  } else {
+    document.getElementById('profile-details').innerHTML = '<div style="font-size:12px;color:var(--tx3)">Your profile is not yet in the Personnel Register. Contact HR to have your record created.</div>';
+  }
+
+  document.getElementById('profile-docs').innerHTML = [
+    'Signed Contract','Signed Job Description','Conflict of Interest Declaration','ID Document'
+  ].map(d=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--bdr)"><span style="font-size:12px">${d}</span><span class="bd bgy" style="font-size:10px">Not confirmed</span></div>`).join('') +
+  `<div style="margin-top:10px;font-size:11px;color:var(--tx3)">Document status is confirmed by HR after upload. Use the Upload Document button to submit files.</div>`;
+}
+
+// ════════════════════════════════════════════
+// RENDER — IR
+// ════════════════════════════════════════════
+function renderIR(){
+  populateSelect('ir-cluster', clusters);
+  populateSelect('ir-cluster-f', clusters);
+  const q   = (document.getElementById('ir-q')?.value||'').toLowerCase();
+  const typ = document.getElementById('ir-type')?.value||'';
+  const cls = document.getElementById('ir-cluster')?.value||'';
+  const sts = document.getElementById('ir-status')?.value||'Open';
+
+  let data = appData.ir.filter(a=>{
+    const str = JSON.stringify(a).toLowerCase();
+    if(q && !str.includes(q)) return false;
+    if(typ && a.CaseType!==typ) return false;
+    if(cls && a.Cluster!==cls) return false;
+    if(sts==='Open' && a.Status==='Closed') return false;
+    if(sts==='Closed' && a.Status!=='Closed') return false;
+    return true;
+  }).sort((a,b)=>new Date(b.DateReported||0)-new Date(a.DateReported||0));
+
+  const tbody = document.getElementById('ir-body');
+  if(!data.length){ tbody.innerHTML=`<tr><td colspan="11" style="text-align:center;color:var(--tx3);padding:20px">No IR cases found.</td></tr>`; return; }
+  tbody.innerHTML = data.map(c=>`<tr>
+    <td style="font-weight:700;color:var(--st)">${escHtml(c.Title||'—')}</td>
+    <td><span class="bd br">${escHtml(c.CaseType||'—')}</span></td>
+    <td>${escHtml(c.Category||'—')}</td>
+    <td>${escHtml(c.EmployeeName||c.EmployeeNo||'—')}</td>
+    <td>${escHtml(c.Cluster||'—')}</td>
+    <td>${fmt(c.DateReported)}</td>
+    <td>${fmt(c.HearingDate)}</td>
+    <td><span class="bd bb">${escHtml(c.CurrentStage||'—')}</span></td>
+    <td>${escHtml(c.Outcome||'Pending')}</td>
+    <td>${statusBadge(c.Status)}</td>
+    <td><button class="btn btn-sec btn-sm" onclick="editIRCase('${c._spId}')">View</button></td>
+  </tr>`).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — ONBOARDING
+// ════════════════════════════════════════════
+function renderOnboarding(){
+  populateSelect('onb-cluster', clusters);
+  populateSelect('onb-cluster-f', clusters);
+  const data = appData.onboarding;
+  const inProg = data.filter(o=>o.OverallStatus==='In Progress').length;
+  const comp   = data.filter(o=>o.OverallStatus==='Completed').length;
+  const esc    = data.filter(o=>o.OverallStatus==='Escalated').length;
+  document.getElementById('onb-kpi').innerHTML = [
+    { l:'In Progress', v:inProg, cls:'kpi-am' },
+    { l:'Completed', v:comp, cls:'kpi-gn' },
+    { l:'Escalated', v:esc, cls:'kpi-rd' },
+    { l:'Total Tracked', v:data.length, cls:'' }
+  ].map(k=>`<div class="kpi ${k.cls}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div></div>`).join('');
+
+  const q   = (document.getElementById('onb-q')?.value||'').toLowerCase();
+  const cls = document.getElementById('onb-cluster')?.value||'';
+  const sts = document.getElementById('onb-status')?.value||'';
+
+  let filtered = data.filter(o=>{
+    if(q && !JSON.stringify(o).toLowerCase().includes(q)) return false;
+    if(cls && o.Cluster!==cls) return false;
+    if(sts && o.OverallStatus!==sts) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('onb-body');
+  if(!filtered.length){ tbody.innerHTML=`<tr><td colspan="11" style="text-align:center;color:var(--tx3);padding:20px">No onboarding records found.</td></tr>`; return; }
+  tbody.innerHTML = filtered.map(o=>`<tr>
+    <td style="font-weight:600">${escHtml(o.EmployeeName||o.EmployeeNo||'—')}</td>
+    <td>${escHtml(o.Cluster||'—')}</td>
+    <td>${fmt(o.StartDate)}</td>
+    <td>${o.ITSetup?'<span class="bd bg">✓</span>':'<span class="bd bgy">—</span>'}</td>
+    <td>${o.InductionComplete?'<span class="bd bg">✓</span>':'<span class="bd bgy">—</span>'}</td>
+    <td>${o.ContractSigned?'<span class="bd bg">✓</span>':'<span class="bd bgy">—</span>'}</td>
+    <td>${fmt(o.Review30Date)}</td>
+    <td>${fmt(o.ProbationEndDate)}</td>
+    <td>${escHtml(o.ProbationOutcome||'Pending')}</td>
+    <td>${statusBadge(o.OverallStatus)}</td>
+    <td><button class="btn btn-sec btn-sm" onclick="editOnboarding('${o._spId}')">Update</button></td>
+  </tr>`).join('');
+}
+
+// ════════════════════════════════════════════
+// RENDER — BURSARY
+// ════════════════════════════════════════════
+function renderBursary(){
+  const data = getPersonnel().filter(p=>BURSARY_CLUSTERS.includes(p.Cluster));
+  const interns = data.filter(p=>p.EmployeeType==='Intern').length;
+  const fixed   = data.filter(p=>p.EmployeeType==='Fixed Term').length;
+  document.getElementById('bursary-kpi').innerHTML = [
+    { l:'Bursary Cluster Personnel', v:data.length, cls:'' },
+    { l:'Interns', v:interns, cls:'kpi-am' },
+    { l:'Fixed Term', v:fixed, cls:'kpi-gn' },
+    { l:'Bursary Clusters', v:BURSARY_CLUSTERS.length, cls:'' }
+  ].map(k=>`<div class="kpi ${k.cls}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div></div>`).join('');
+
+  document.getElementById('bursary-chart').innerHTML = BURSARY_CLUSTERS.map(c=>{
+    const n = data.filter(p=>p.Cluster===c).length;
+    return `<div class="prog-row"><div class="prog-meta"><span>${escHtml(c)}</span><span>${n}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct(n,data.length||1)}%"></div></div></div>`;
+  }).join('');
+
+  document.getElementById('bursary-body').innerHTML = data.map(p=>`<tr>
+    <td style="font-weight:600">${escHtml(p.EmployeeNo||'—')}</td>
+    <td>${escHtml((p.FirstName||'')+' '+(p.LastName||''))}</td>
+    <td>${escHtml(p.Cluster||'—')}</td>
+    <td>${escHtml(p.JobTitle||'—')}</td>
+    <td><span class="bd bgy">${escHtml(p.EmployeeType||'—')}</span></td>
+    <td>${fmt(p.DateEngaged)}</td>
+    <td>${fmt(p.ContractEndDate)||'—'}</td>
+  </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--tx3);padding:20px">No bursary cluster personnel found.</td></tr>`;
+}
+
+// ════════════════════════════════════════════
+// RENDER — SETTINGS
+// ════════════════════════════════════════════
+function renderSettings(){
+  const listEl = document.getElementById('cluster-list');
+  listEl.innerHTML = clusters.map((c,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="text" value="${escHtml(c)}" id="cl-${i}" style="flex:1;border:1px solid var(--bdr);border-radius:5px;padding:5px 9px;font-size:12px">
+      <button class="btn btn-sec btn-sm" onclick="renameCluster(${i})">Save</button>
+      <button class="btn btn-rd btn-sm" onclick="removeCluster(${i})">✕</button>
+    </div>`).join('');
+  // Load webhooks
+  const el = id=>document.getElementById(id);
+  el('wh-hr').value    = webhooks.hr||'';
+  el('wh-cluster').value = webhooks.cluster||'';
+  el('wh-mgmt').value  = webhooks.mgmt||'';
+  updateWebhookDots();
+  // Load group config
+  el('cfg-superadmin').value = groups.superAdmin||DEFAULT_GROUPS.superAdmin;
+  el('cfg-hradmin').value    = groups.hrAdmin||DEFAULT_GROUPS.hrAdmin;
+  el('cfg-clustermgr').value = groups.clusterMgr||DEFAULT_GROUPS.clusterMgr;
+  el('cfg-management').value = groups.management||DEFAULT_GROUPS.management;
+  el('cfg-auditor').value    = groups.auditor||DEFAULT_GROUPS.auditor;
+}
+
+// ════════════════════════════════════════════
+// RENDER — ALL
+// ════════════════════════════════════════════
+function renderAll(){ /* tabs render on demand */ }
+
+// ════════════════════════════════════════════
+// NOTIFICATIONS
+// ════════════════════════════════════════════
+function buildNotifications(){
+  const active = appData.alerts.filter(a=>a.Status==='Active');
+  notifItems = active.slice(0,20);
+  const count = notifItems.length;
+  const el = document.getElementById('notif-count');
+  el.textContent = count;
+  el.style.display = count ? 'flex' : 'none';
+  const list = document.getElementById('notif-list');
+  if(!count){ list.innerHTML='<div class="notif-empty">No active alerts.</div>'; return; }
+  list.innerHTML = notifItems.map(a=>`<div class="ni">
+    <div class="ni-title"><span class="ni-badge ni-${(a.Priority||'low').toLowerCase()}">${escHtml(a.Priority||'')}</span>${escHtml(a.Title)}</div>
+    <div class="ni-meta">${escHtml(a.AlertType||'')} · ${escHtml(a.Cluster||'')} · Due: ${fmt(a.DueDate)}</div>
+  </div>`).join('');
+}
+
+function toggleNotif(){
+  document.getElementById('notif-panel').classList.toggle('open');
+}
+
+function markAllRead(){ document.getElementById('notif-panel').classList.remove('open'); }
+
+// ════════════════════════════════════════════
+// CLUSTER DROPDOWNS
+// ════════════════════════════════════════════
+function populateSelect(id, opts, addAll=false){
+  const el = document.getElementById(id);
+  if(!el) return;
+  const current = el.value;
+  const firstOpt = el.options[0];
+  const preserve = firstOpt && (firstOpt.value===''||firstOpt.value==='Active');
+  el.innerHTML = '';
+  if(preserve) el.appendChild(firstOpt);
+  opts.forEach(o=>{ const op=document.createElement('option'); op.value=o; op.textContent=o; el.appendChild(op); });
+  if(current) el.value = current;
+}
+
+function buildClusterDropdowns(){
+  const ids = ['alert-cluster','dir-cluster','reg-cluster','ir-cluster','onb-cluster','emp-cluster','al-cluster','ir-cluster-f','onb-cluster-f'];
+  ids.forEach(id=>populateSelect(id, clusters));
+}
+
+// ════════════════════════════════════════════
+// EMPLOYEE CRUD
+// ════════════════════════════════════════════
+function openM(id){ document.getElementById(id)?.classList.add('show'); }
+function closeM(id){ document.getElementById(id)?.classList.remove('show'); }
+
+function editEmployee(spId){
+  const p = appData.personnel.find(x=>x._spId===spId);
+  if(!p) return;
+  document.getElementById('emp-modal-title').textContent = 'Edit Employee';
+  document.getElementById('emp-sp-id').value = spId;
+  const f = id => { const el=document.getElementById(id); if(el) return el; };
+  const setVal = (id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  setVal('emp-no', p.EmployeeNo); setVal('emp-first', p.FirstName); setVal('emp-last', p.LastName);
+  setVal('emp-known', p.KnownAs); setVal('emp-email', p.WorkEmail);
+  if(p.DateOfBirth) setVal('emp-dob', p.DateOfBirth.split('T')[0]);
+  setVal('emp-gender', p.Gender); setVal('emp-race', p.Race); setVal('emp-nationality', p.Nationality);
+  setVal('emp-cluster', p.Cluster); setVal('emp-jobtitle', p.JobTitle); setVal('emp-jobgrade', p.JobGrade);
+  setVal('emp-payroll', p.PayrollLevel); setVal('emp-oclevel', p.OccupationalLevel); setVal('emp-costcentre', p.CostCentre);
+  setVal('emp-emptype', p.EmployeeType); setVal('emp-empltype', p.EmploymentType); setVal('emp-contracttype', p.ContractType);
+  if(p.DateEngaged) setVal('emp-engaged', p.DateEngaged.split('T')[0]);
+  if(p.ContractEndDate) setVal('emp-contractend', p.ContractEndDate.split('T')[0]);
+  setVal('emp-manager', p.ManagerName); setVal('emp-leavehol', p.LeaveGroupHolidays); setVal('emp-leaveent', p.LeaveGroupEntitlement);
+  const medEl = document.getElementById('emp-medaid'); if(medEl) medEl.value = (p.MedicalAid===true||p.MedicalAid==='true') ? 'true':'false';
+  const forEl = document.getElementById('emp-foreign'); if(forEl) forEl.value = (p.ForeignNational===true||p.ForeignNational==='true') ? 'true':'false';
+  const disEl = document.getElementById('emp-disabled'); if(disEl) disEl.value = (p.Disabled===true||p.Disabled==='true') ? 'true':'false';
+  setVal('emp-status', p.Status||'Active');
+  openM('m-employee');
+}
+
+async function saveEmployee(){
+  const spId = document.getElementById('emp-sp-id').value;
+  const g = id=>document.getElementById(id)?.value||'';
+  const gb = id=>document.getElementById(id)?.value==='true';
+  const fields = {
+    Title: `${g('emp-first')} ${g('emp-last')}`.trim(),
+    EmployeeNo: g('emp-no'), FirstName: g('emp-first'), LastName: g('emp-last'),
+    KnownAs: g('emp-known'), WorkEmail: g('emp-email'), DateOfBirth: g('emp-dob')||null,
+    Gender: g('emp-gender'), Race: g('emp-race'), Nationality: g('emp-nationality'),
+    Disabled: gb('emp-disabled'), ForeignNational: gb('emp-foreign'),
+    Cluster: g('emp-cluster'), JobTitle: g('emp-jobtitle'), JobGrade: g('emp-jobgrade'),
+    PayrollLevel: g('emp-payroll'), OccupationalLevel: g('emp-oclevel'), CostCentre: g('emp-costcentre'),
+    EmployeeType: g('emp-emptype'), EmploymentType: g('emp-empltype'), ContractType: g('emp-contracttype'),
+    DateEngaged: g('emp-engaged')||null, ContractEndDate: g('emp-contractend')||null,
+    ManagerName: g('emp-manager'), LeaveGroupHolidays: g('emp-leavehol'),
+    LeaveGroupEntitlement: parseFloat(g('emp-leaveent'))||null,
+    MedicalAid: gb('emp-medaid'), Active: g('emp-status')==='Active', Status: g('emp-status')
+  };
+  if(!fields.EmployeeNo||!fields.FirstName||!fields.LastName||!fields.DateEngaged){
+    toast('Employee No, First Name, Last Name, and Date Engaged are required.','error'); return;
+  }
+  showLoad('Saving…');
+  try {
+    if(spId){ await spPatch(LISTS.personnel, spId, fields); toast('Employee updated.','success'); }
+    else { await spPost(LISTS.personnel, fields); toast('Employee added.','success'); }
+    closeM('m-employee');
+    appData.personnel = await spList(LISTS.personnel);
+    renderRegister();
+    buildNotifications();
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+async function archiveEmployee(spId){
+  if(!confirm('Archive this employee? They will be moved to the archived view.')) return;
+  showLoad('Archiving…');
+  try {
+    await spPatch(LISTS.personnel, spId, { Status:'Archived', Active:false });
+    toast('Employee archived.','success');
+    appData.personnel = await spList(LISTS.personnel);
+    renderRegister();
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+function toggleArchiveView(){ showArchive=!showArchive; renderRegister(); }
+
+// ════════════════════════════════════════════
+// ALERT CRUD
+// ════════════════════════════════════════════
+async function saveAlert(){
+  const g = id=>document.getElementById(id)?.value||'';
+  const today = new Date().toISOString().split('T')[0];
+  const fields = {
+    Title: g('al-title'), AlertType: g('al-type'), Priority: g('al-priority'),
+    EmployeeNo: g('al-empno'), Cluster: g('al-cluster'),
+    DueDate: g('al-due')||null, TriggerDate: today,
+    Visibility: g('al-visibility'), Status:'Active'
+  };
+  if(!fields.Title){ toast('Alert title is required.','error'); return; }
+  showLoad('Creating alert…');
+  try {
+    await spPost(LISTS.alerts, fields);
+    toast('Alert created.','success');
+    closeM('m-alert');
+    appData.alerts = await spList(LISTS.alerts);
+    renderAlerts();
+    buildNotifications();
+    if(webhooks.hr) sendAdaptiveCard(webhooks.hr, '🚨 New HR Alert', fields.Title, `Type: ${fields.AlertType} · Priority: ${fields.Priority}`);
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+function resolveAlert(spId, action){
+  document.getElementById('resolve-id').value = spId;
+  document.getElementById('resolve-action').value = action;
+  document.getElementById('resolve-title').textContent = action==='Resolved' ? 'Resolve Alert' : 'Dismiss Alert';
+  openM('m-resolve');
+}
+
+async function confirmResolve(){
+  const spId  = document.getElementById('resolve-id').value;
+  const action= document.getElementById('resolve-action').value;
+  const notes = document.getElementById('resolve-notes').value;
+  showLoad('Updating…');
+  try {
+    await spPatch(LISTS.alerts, spId, { Status:action, ResolutionNotes:notes, ResolvedDate:new Date().toISOString().split('T')[0] });
+    toast(`Alert ${action.toLowerCase()}.`,'success');
+    closeM('m-resolve');
+    document.getElementById('resolve-notes').value='';
+    appData.alerts = await spList(LISTS.alerts);
+    renderAlerts();
+    buildNotifications();
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+// ════════════════════════════════════════════
+// IR CRUD
+// ════════════════════════════════════════════
+async function saveIRCase(){
+  const spId = document.getElementById('ir-sp-id').value;
+  const g = id=>document.getElementById(id)?.value||'';
+  const today = new Date();
+  const caseNo = spId ? '' : `IR-${today.getFullYear()}-${String(appData.ir.length+1).padStart(3,'0')}`;
+  const fields = {
+    Title: caseNo || undefined,
+    CaseType: g('ir-type-f'), Category: g('ir-cat'), DateReported: g('ir-date')||null,
+    EmployeeNo: g('ir-empno'), EmployeeName: g('ir-empname'), JobTitle: g('ir-jobtitle'),
+    Cluster: g('ir-cluster-f'), JobGrade: g('ir-grade'), ReportedBy: g('ir-reportedby'),
+    HearingDate: g('ir-hearing')||null, CurrentStage: g('ir-stage'),
+    Outcome: g('ir-outcome'), Sanction: g('ir-sanction'),
+    CaseNotes: g('ir-notes'), Status:'Open'
+  };
+  if(!fields.EmployeeNo){ toast('Employee No is required.','error'); return; }
+  if(!spId) fields.Title = caseNo;
+  showLoad('Saving case…');
+  try {
+    if(spId){ await spPatch(LISTS.ir, spId, fields); toast('Case updated.','success'); }
+    else { await spPost(LISTS.ir, fields); toast('Case registered.','success'); }
+    closeM('m-ircase');
+    appData.ir = await spList(LISTS.ir);
+    renderIR();
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+function editIRCase(spId){
+  const c = appData.ir.find(x=>x._spId===spId);
+  if(!c) return;
+  document.getElementById('ir-modal-title').textContent = 'Update IR Case';
+  document.getElementById('ir-sp-id').value = spId;
+  const setVal = (id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  setVal('ir-type-f',c.CaseType); setVal('ir-cat',c.Category);
+  if(c.DateReported) setVal('ir-date',c.DateReported.split('T')[0]);
+  setVal('ir-empno',c.EmployeeNo); setVal('ir-empname',c.EmployeeName); setVal('ir-jobtitle',c.JobTitle);
+  setVal('ir-cluster-f',c.Cluster); setVal('ir-grade',c.JobGrade); setVal('ir-reportedby',c.ReportedBy);
+  if(c.HearingDate) setVal('ir-hearing',c.HearingDate.split('T')[0]);
+  setVal('ir-stage',c.CurrentStage); setVal('ir-outcome',c.Outcome); setVal('ir-sanction',c.Sanction);
+  setVal('ir-notes',c.CaseNotes);
+  openM('m-ircase');
+}
+
+// ════════════════════════════════════════════
+// ONBOARDING CRUD
+// ════════════════════════════════════════════
+async function saveOnboarding(){
+  const spId = document.getElementById('onb-sp-id').value;
+  const g = id=>document.getElementById(id)?.value||'';
+  const fields = {
+    Title: g('onb-empno'),
+    EmployeeNo: g('onb-empno'), EmployeeName: g('onb-empname'),
+    Cluster: g('onb-cluster-f'), StartDate: g('onb-start')||null,
+    Review30Date: g('onb-30')||null, Review60Date: g('onb-60')||null,
+    Review90Date: g('onb-90')||null, ProbationEndDate: g('onb-probend')||null,
+    ITSetup:false, InductionComplete:false, PolicyAcknowledgement:false,
+    ContractSigned:false, ManagerSignOff:false, OverallStatus:'In Progress',
+    ProbationOutcome:'Pending'
+  };
+  if(!fields.EmployeeNo){ toast('Employee No is required.','error'); return; }
+  showLoad('Starting onboarding…');
+  try {
+    if(spId){ await spPatch(LISTS.onboarding, spId, fields); toast('Onboarding updated.','success'); }
+    else { await spPost(LISTS.onboarding, fields); toast('Onboarding started.','success'); }
+    closeM('m-onboarding');
+    appData.onboarding = await spList(LISTS.onboarding);
+    renderOnboarding();
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+function editOnboarding(spId){
+  const o = appData.onboarding.find(x=>x._spId===spId);
+  if(!o) return;
+  document.getElementById('onb-sp-id').value = spId;
+  const setVal = (id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||''; };
+  setVal('onb-empno',o.EmployeeNo); setVal('onb-empname',o.EmployeeName); setVal('onb-cluster-f',o.Cluster);
+  if(o.StartDate) setVal('onb-start',o.StartDate.split('T')[0]);
+  if(o.Review30Date) setVal('onb-30',o.Review30Date.split('T')[0]);
+  if(o.Review60Date) setVal('onb-60',o.Review60Date.split('T')[0]);
+  if(o.Review90Date) setVal('onb-90',o.Review90Date.split('T')[0]);
+  if(o.ProbationEndDate) setVal('onb-probend',o.ProbationEndDate.split('T')[0]);
+  openM('m-onboarding');
+}
+
+// ════════════════════════════════════════════
+// CONFLICT OF INTEREST
+// ════════════════════════════════════════════
+async function submitCOI(){
+  const year    = document.getElementById('coi-year').value;
+  const conflict= document.getElementById('coi-conflict').value;
+  const details = document.getElementById('coi-details').value;
+  const confirm = document.getElementById('coi-confirm').value;
+  if(confirm!=='true'){ toast('Please confirm the declaration before submitting.','warning'); return; }
+  const fields = {
+    Title: `${currentUser.email} - ${year}`,
+    EmployeeNo:'', EmployeeName:currentUser.name,
+    DeclarationYear:year, HasConflict:conflict,
+    ConflictDetails:details, SubmittedDate:new Date().toISOString().split('T')[0],
+    SubmittedBy:currentUser.email
+  };
+  showLoad('Submitting…');
+  try {
+    await spPost(LISTS.coi, fields);
+    toast('Declaration submitted. HR has been notified.','success');
+    closeM('m-coi');
+    if(webhooks.hr) sendAdaptiveCard(webhooks.hr,'📋 Conflict of Interest Declaration Submitted',`${currentUser.name} has submitted their ${year} declaration.`,'');
+  } catch(e){ toast('Error: '+e.message,'error'); }
+  hideLoad();
+}
+
+async function notifyUpload(){
+  const type = document.getElementById('upload-type').value;
+  const note = document.getElementById('upload-note').value;
+  toast(`HR notified of document upload: ${type}. Contact HR directly if upload to SharePoint is not yet active.`,'success');
+  closeM('m-upload');
+  if(webhooks.hr) sendAdaptiveCard(webhooks.hr,'⬆ Document Upload Notification',`${currentUser.name} — ${type}`,note||'');
+}
+
+// ════════════════════════════════════════════
+// CLUSTER MANAGEMENT
+// ════════════════════════════════════════════
+function addCluster(){
+  const name = document.getElementById('new-cluster-name').value.trim();
+  if(!name){ toast('Enter a cluster name.','warning'); return; }
+  if(clusters.includes(name)){ toast('Cluster already exists.','warning'); return; }
+  clusters.push(name);
+  saveClusters();
+  document.getElementById('new-cluster-name').value='';
+  renderSettings();
+  buildClusterDropdowns();
+  toast(`Cluster "${name}" added.`,'success');
+}
+
+function renameCluster(i){
+  const val = document.getElementById(`cl-${i}`)?.value.trim();
+  if(!val) return;
+  clusters[i] = val;
+  saveClusters();
+  buildClusterDropdowns();
+  toast('Cluster name updated.','success');
+}
+
+function removeCluster(i){
+  if(!confirm(`Remove cluster "${clusters[i]}"? Employees assigned to this cluster will show no cluster.`)) return;
+  clusters.splice(i,1);
+  saveClusters();
+  renderSettings();
+  buildClusterDropdowns();
+  toast('Cluster removed.','success');
+}
+
+function saveClusters(){ localStorage.setItem('ph_clusters', JSON.stringify(clusters)); }
+
+// ════════════════════════════════════════════
+// WEBHOOKS
+// ════════════════════════════════════════════
+function saveWebhooks(){
+  webhooks.hr      = document.getElementById('wh-hr')?.value.trim()||'';
+  webhooks.cluster = document.getElementById('wh-cluster')?.value.trim()||'';
+  webhooks.mgmt    = document.getElementById('wh-mgmt')?.value.trim()||'';
+  localStorage.setItem('ph_webhooks', JSON.stringify(webhooks));
+  updateWebhookDots();
+  toast('Webhook URLs saved.','success');
+}
+
+function updateWebhookDots(){
+  ['hr','cluster','mgmt'].forEach(k=>{
+    const dot = document.getElementById(`wh-${k}-dot`);
+    if(dot) dot.className = 'wh-dot ' + (webhooks[k] ? 'wh-ok' : 'wh-empty');
+  });
+}
+
+async function testWebhook(key){
+  const url = webhooks[key] || document.getElementById(`wh-${key}`)?.value.trim();
+  if(!url){ toast('Enter a webhook URL first.','warning'); return; }
+  try {
+    await sendAdaptiveCard(url,'🔔 Test Notification','StudyTrust Personnel Hub','Webhook connection confirmed.');
+    toast('Test notification sent.','success');
+  } catch(e){ toast('Webhook error: '+e.message,'error'); }
+}
+
+async function sendAdaptiveCard(url, title, subtitle, body){
+  if(!url) return;
+  const payload = {
+    type:'message',
+    attachments:[{
+      contentType:'application/vnd.microsoft.card.adaptive',
+      content:{
+        '$schema':'http://adaptivecards.io/schemas/adaptive-card.json',
+        type:'AdaptiveCard', version:'1.3',
+        body:[
+          { type:'TextBlock', text:'StudyTrust Personnel Hub', size:'Small', weight:'Lighter', color:'Accent' },
+          { type:'TextBlock', text:title, size:'Large', weight:'Bolder', wrap:true },
+          { type:'TextBlock', text:subtitle, wrap:true },
+          body ? { type:'TextBlock', text:body, wrap:true, color:'Accent' } : null
+        ].filter(Boolean),
+        actions:[{ type:'Action.OpenUrl', title:'Open Personnel Hub', url:REDIRECT_URI }]
+      }
+    }]
+  };
+  const res = await fetch(url,{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  if(!res.ok) throw new Error(`Webhook HTTP ${res.status}`);
+}
+
+// ════════════════════════════════════════════
+// GROUP CONFIG
+// ════════════════════════════════════════════
+function saveGroupConfig(){
+  groups.superAdmin = document.getElementById('cfg-superadmin').value.trim()||DEFAULT_GROUPS.superAdmin;
+  groups.hrAdmin    = document.getElementById('cfg-hradmin').value.trim()||DEFAULT_GROUPS.hrAdmin;
+  groups.clusterMgr = document.getElementById('cfg-clustermgr').value.trim()||DEFAULT_GROUPS.clusterMgr;
+  groups.management = document.getElementById('cfg-management').value.trim()||DEFAULT_GROUPS.management;
+  groups.auditor    = document.getElementById('cfg-auditor').value.trim()||DEFAULT_GROUPS.auditor;
+  localStorage.setItem('ph_groups', JSON.stringify(groups));
+  toast('Group names saved. Sign out and back in for changes to take effect.','success');
+}
+
+// ════════════════════════════════════════════
+// EXPORT
+// ════════════════════════════════════════════
+function exportXlsx(tab){
+  const sources = {
+    register:   { data: appData.personnel, name:'PersonnelRegister' },
+    alerts:     { data: appData.alerts,    name:'HRAlertsLog' },
+    ir:         { data: appData.ir,        name:'IRCases' },
+    onboarding: { data: appData.onboarding,name:'OnboardingTracker' }
+  };
+  const src = sources[tab];
+  if(!src||!src.data.length){ toast('No data to export.','warning'); return; }
+  const rows = src.data.map(r=>{ const o={...r}; delete o._spId; return o; });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, src.name);
+  XLSX.writeFile(wb, `StudyTrust_${src.name}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ════════════════════════════════════════════
+// CONFIG — localStorage
+// ════════════════════════════════════════════
+function loadConfig(){
+  clusters = JSON.parse(localStorage.getItem('ph_clusters')||'null') || [...DEFAULT_CLUSTERS];
+  groups   = JSON.parse(localStorage.getItem('ph_groups')||'null')   || {...DEFAULT_GROUPS};
+  webhooks = JSON.parse(localStorage.getItem('ph_webhooks')||'null') || { hr:'',cluster:'',mgmt:'' };
+}
+
+// ════════════════════════════════════════════
+// TOAST + LOAD
+// ════════════════════════════════════════════
+let toastTimer;
+function toast(msg, type=''){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' '+type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.className='', 3500);
+}
+
+function showLoad(msg='Loading…'){ document.getElementById('load').classList.remove('hidden'); document.getElementById('load-msg').textContent=msg; }
+function hideLoad(){ document.getElementById('load').classList.add('hidden'); }
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', async ()=>{
+  loadConfig();
+  msalInstance = new msal.PublicClientApplication(MSAL_CFG);
+  await msalInstance.initialize();
+  // Handle redirect
+  try {
+    const res = await msalInstance.handleRedirectPromise();
+    if(res){ msalInstance.setActiveAccount(res.account); await afterSignIn(); return; }
+  } catch(e){ console.warn('Redirect error:',e); }
+  // Check existing session
+  const accounts = msalInstance.getAllAccounts();
+  if(accounts.length){
+    msalInstance.setActiveAccount(accounts[0]);
+    try { await afterSignIn(); return; } catch(e){ console.warn('Silent auth failed:',e); }
+  }
+  // Show sign-in
+  document.getElementById('signin-screen').classList.remove('hidden');
+});
+
+</script>
+</body>
+</html>
