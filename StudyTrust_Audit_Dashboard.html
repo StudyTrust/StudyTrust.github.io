@@ -1,0 +1,2351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StudyTrust Audit Tracker</title>
+<!--
+  ════════════════════════════════════════════════════════
+  STUDYTRUST AUDIT TRACKER  v4.7  — Microsoft Graph Edition
+
+  Changes since v4.6:
+   · UI parity upgrade: Governance Hub v4.5 style enhancements applied.
+   · Richer CSS variable palette (--st-p, --sur, --bdr, --tx, --tx2, --tx3,
+     --gn-bg/tx, --am-bg/tx, --rd-bg/tx) for improved component theming.
+   · Base font-size increased to 14px for improved readability.
+   · Global search bar in header — searches Description/Title across all tabs.
+   · Diagnostics button (ℹ) in header — shows config + connectivity status.
+   · Coloured role badge in header replaces plain role toggle label.
+   · Notification panel upgraded with Mark All Read button.
+   · Modal dark-header pattern applied across all modals.
+   · Info-box utility classes: .info-am .info-gn .info-bl.
+   · Dashboard footer added.
+   · XLSX export added alongside CSV on Planning, Execution, Questions tabs.
+   · Filename preserved as StudyTrust_Audit_Dashboard.html (no version in name)
+     to protect all existing Microsoft Teams tab connections.
+
+  ════════════════════════════════════════════════════════
+-->
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --st:#226397;--st-d:#003d66;--st-m:#1c4e80;--st-a:#4da3d9;
+  --st-l:#e6f1fb;--st-p:#e8f0f8;
+  --grey:#414042;--bg:#f4f6f9;--sur:#fff;--bdr:#dde1e7;--border:#dde3ea;
+  --tx:#1a1a2e;--tx2:#5a6172;--tx3:#8a92a0;
+  --ok:#3B6D11;--ok-bg:#EAF3DE;
+  --prog:#854F0B;--prog-bg:#FAEEDA;
+  --att:#A32D2D;--att-bg:#FCEBEB;
+  --ns:#5F5E5A;--ns-bg:#F1EFE8;
+  --wait:#3D5A80;--wait-bg:#E6ECF4;
+  --late:#7B1C1C;--late-bg:#FDECEA;--late-border:#E53935;
+  --new:#0F6E56;--new-bg:#E1F5EE;--new-border:#1D9E75;
+  --aud:#3C3489;--aud-bg:#EEEDFE;
+  --gn-bg:#e8f5e9;--gn-tx:#1b5e20;
+  --am-bg:#fff8e1;--am-tx:#b26a00;
+  --rd-bg:#fde8e8;--rd-tx:#7a2020;
+  --rad:8px;--rad-lg:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:Aptos,Calibri,'Segoe UI',Arial,sans-serif}
+body{background:var(--bg);color:var(--tx);font-size:14px;min-height:100vh}
+
+/* ── SIGN IN SCREEN ── */
+#signin-screen{position:fixed;inset:0;background:var(--st);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+#signin-screen.hidden{display:none}
+.signin-card{background:#fff;border-radius:16px;padding:36px 40px;max-width:420px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.signin-logo{display:none}
+.signin-card h2{font-size:18px;font-weight:700;color:var(--st);margin-bottom:6px}
+.signin-card p{font-size:13px;color:#666;margin-bottom:24px;line-height:1.5}
+.btn-signin{background:var(--st);color:#fff;border:none;border-radius:8px;padding:12px 28px;font-size:14px;font-weight:700;cursor:pointer;width:100%;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn-signin:hover{background:var(--st-d)}
+.btn-signin:disabled{opacity:.6;cursor:not-allowed}
+.signin-note{font-size:11px;color:rgba(255,255,255,.6);margin-top:16px;text-align:center}
+.signin-error{background:#FCEBEB;border:1px solid #E57373;border-radius:8px;padding:10px 14px;font-size:12px;color:#7B1C1C;margin-top:14px;display:none;text-align:left;line-height:1.5}
+.signin-error.show{display:block}
+
+/* ── LOADING OVERLAY ── */
+#loading-overlay{position:fixed;inset:0;background:rgba(34,99,151,.9);z-index:8000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#loading-overlay.hidden{display:none}
+.spinner{width:40px;height:40px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#loading-msg{color:#fff;font-size:14px;font-weight:500}
+
+/* ── SAVE TOAST ── */
+#toast{position:fixed;bottom:20px;right:20px;background:#1a1a1a;color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:500;z-index:5000;opacity:0;transition:opacity .25s;pointer-events:none;max-width:320px}
+#toast.show{opacity:1}
+#toast.ok{background:var(--ok)}
+#toast.err{background:var(--att)}
+
+/* ── HEADER ── */
+#hdr{background:var(--st);color:#fff;padding:11px 18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:50;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+#hdr-brand h1{font-size:16px;font-weight:700;line-height:1.1}
+#hdr-brand p{font-size:11px;opacity:.75;margin-top:1px}
+#hdr-center{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap}
+.hdr-sel{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer}
+.hdr-sel option{color:#1a1a1a;background:#fff}
+.hdr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;white-space:nowrap;font-weight:500}
+.hdr-btn:hover{background:rgba(255,255,255,.28)}
+#role-toggle{display:flex;background:rgba(0,0,0,.2);border-radius:20px;overflow:hidden}
+.role-opt{border:none;background:transparent;color:rgba(255,255,255,.65);padding:5px 13px;font-size:11px;cursor:pointer;font-weight:500;border-radius:20px}
+.role-opt.active{background:#fff;color:var(--st);font-weight:700}
+#notif-btn{position:relative;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:50%;width:32px;height:32px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+#notif-count{position:absolute;top:-4px;right:-4px;background:#e53935;color:#fff;border-radius:10px;font-size:9px;font-weight:700;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;padding:0 3px}
+.deadline-pill{background:rgba(255,255,255,.18);border-radius:20px;padding:5px 12px;font-size:11px;white-space:nowrap;border:1px solid rgba(255,255,255,.25)}
+.deadline-pill strong{display:block;font-size:15px;font-weight:700;line-height:1}
+.deadline-pill.warn{background:rgba(255,120,0,.35)}
+.deadline-pill.urgent{background:rgba(220,0,0,.35);animation:pulse 1.5s ease infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+#user-pill{background:rgba(255,255,255,.2);border-radius:20px;padding:4px 10px;font-size:11px;display:flex;align-items:center;gap:5px}
+/* role badge in header */
+#role-badge{border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;white-space:nowrap}
+#role-badge.admin{background:#fff3cd;color:#856404}
+#role-badge.auditor{background:var(--aud-bg);color:var(--aud)}
+
+/* ── GLOBAL SEARCH ── */
+#gs-wrap{position:relative}
+#gs-input{width:220px;padding:6px 10px 6px 30px;border-radius:20px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-family:inherit;outline:none}
+#gs-input::placeholder{color:rgba(255,255,255,.6)}
+#gs-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);opacity:.7;font-size:13px;pointer-events:none}
+#gs-results{display:none;position:absolute;top:calc(100% + 6px);left:0;width:380px;background:#fff;border-radius:var(--rad);border:1px solid var(--bdr);box-shadow:0 8px 28px rgba(0,0,0,.16);z-index:500;max-height:60vh;overflow-y:auto}
+.gsr{padding:10px 14px;border-bottom:1px solid var(--bdr);cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+.gsr:hover{background:var(--st-p)}
+.gsr-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;white-space:nowrap;margin-top:2px;flex-shrink:0;background:var(--st-l);color:var(--st)}
+.gsr-title{font-weight:600;font-size:12px;color:var(--tx)}
+.gsr-meta{font-size:11px;color:var(--tx2);margin-top:2px}
+.gs-empty{padding:16px;text-align:center;font-size:12px;color:var(--tx2)}
+
+/* ── ROLE BANNER ── */
+#role-banner{padding:5px 18px;font-size:12px;font-weight:600;text-align:center}
+.admin-mode{background:#fff3cd;color:#856404;border-bottom:1px solid #ffc107}
+.auditor-mode{background:var(--aud-bg);color:var(--aud);border-bottom:1px solid #AFA9EC}
+
+/* ── NOTIFICATION PANEL ── */
+#notif-panel{display:none;position:fixed;top:58px;right:14px;width:360px;max-height:70vh;background:#fff;border-radius:var(--rad-lg);border:1px solid var(--bdr);box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:200;flex-direction:column;overflow:hidden}
+#notif-panel.open{display:flex}
+#notif-hdr{padding:11px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;background:var(--st-l)}
+#notif-hdr h3{font-size:13px;font-weight:700;color:var(--st)}
+#notif-hdr-actions{display:flex;gap:6px;align-items:center}
+#notif-list{overflow-y:auto;flex:1;padding:6px 0}
+.ni{padding:8px 15px;border-bottom:.5px solid #f0f0f0}
+.ni-title{font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:2px}
+.ni-meta{font-size:11px;color:#777}
+.ni-badge{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-right:3px}
+.ni-badge.late{background:var(--late-bg);color:var(--late)}
+.ni-badge.new{background:var(--new-bg);color:var(--new)}
+.ni-badge.req{background:var(--aud-bg);color:var(--aud)}
+
+/* ── TABS ── */
+#tab-bar{background:#fff;border-bottom:2px solid var(--st);display:flex;flex-wrap:wrap;padding:0 14px;position:sticky;top:54px;z-index:40;gap:1px}
+.tab-btn{border:none;background:none;cursor:pointer;padding:8px 13px;font-size:12px;font-weight:500;color:#666;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.tab-btn.active{color:var(--st);border-bottom-color:var(--st)}
+.tab-btn:hover{color:var(--st)}
+.tc{background:var(--st-l);color:var(--st);border-radius:10px;font-size:10px;font-weight:700;padding:1px 5px}
+.tc.req{background:var(--aud-bg);color:var(--aud)}
+
+/* ── CONTENT ── */
+#content{padding:16px 18px;max-width:1500px;margin:0 auto}
+.section{display:none}.section.active{display:block}
+
+/* ── CARDS ── */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:9px;margin-bottom:16px}
+.card{background:#fff;border-radius:var(--rad-lg);border:.5px solid var(--bdr);padding:13px 15px;text-align:center}
+.card .cl{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.card .cv{font-size:24px;font-weight:700}
+.card .cs{font-size:11px;color:#888;margin-top:2px}
+.c-ok .cv{color:var(--ok)}.c-prog .cv{color:var(--prog)}.c-att .cv{color:var(--att)}.c-late .cv{color:var(--late)}.c-st .cv{color:var(--st)}.c-aud .cv{color:var(--aud)}
+
+/* ── PROGRESS ── */
+.pw{margin-bottom:16px}
+.pl{display:flex;justify-content:space-between;font-size:12px;color:#555;margin-bottom:4px}
+.pb{height:9px;background:#e0e5ec;border-radius:5px;overflow:hidden}
+.pf{height:100%;background:var(--st);border-radius:5px;transition:width .4s}
+
+/* ── SECTION HEADER ── */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;flex-wrap:wrap;gap:7px}
+.sh h2{font-size:14px;font-weight:700;color:var(--st)}
+.sa{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.btn{border-radius:6px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;border:1px solid var(--bdr);background:#fff;color:#444}
+.btn:hover{background:#f5f7fa}
+.btn-p{background:var(--st);color:#fff;border-color:var(--st)}.btn-p:hover{background:var(--st-d)}
+.btn-a{background:var(--aud-bg);color:var(--aud);border-color:#AFA9EC}
+.btn-sec{background:var(--st-p);color:var(--st);border-color:var(--st-m)}
+.btn-sec:hover{background:var(--st-l)}
+.btn-sm{padding:3px 8px;font-size:10px}
+
+/* ── FILTER BAR ── */
+.fb{display:flex;gap:7px;margin-bottom:11px;flex-wrap:wrap;align-items:center}
+.fb input,.fb select{border:.5px solid #ccc;border-radius:6px;padding:5px 9px;font-size:12px;color:#333;background:#fff}
+.fb input{flex:1;min-width:130px;max-width:240px}
+.fb input[type=date]{flex:0 0 auto;min-width:130px;max-width:140px}
+.fb-lbl{font-size:11px;color:#555;font-weight:600;margin-left:4px}
+.fb-sep{font-size:10px;color:#888}
+.instr-body{display:none}.instr-body.open{display:block}
+.wh-dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.wh-ok{background:#22c55e}.wh-empty{background:#d1d5db}
+.aud-req-row:hover{background:var(--st-p)}
+.rl-row input{height:24px}
+
+/* ── TABLE ── */
+.tw{overflow-x:auto;border-radius:var(--rad-lg);border:.5px solid var(--bdr);background:#fff}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:var(--st);color:#fff;padding:7px 9px;text-align:left;font-weight:700;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:2}
+th.n{width:30px;text-align:center}
+tbody tr{border-bottom:.5px solid #edf0f3}
+tbody tr:hover{background:#f8fafc}
+tbody tr.rl{background:#FFF5F5;border-left:3px solid var(--late-border)}
+tbody tr.rn{border-left:3px solid var(--new-border)}
+td{padding:6px 8px;vertical-align:top;line-height:1.45}
+td.n{text-align:center;color:#aaa;font-size:11px;font-weight:700}
+td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42px;resize:vertical;box-sizing:border-box}
+
+/* ── FIXED-WIDTH TABLES (Planning / Execution) — fit all columns to viewport, no horizontal scroll ── */
+.tbl-fit{table-layout:fixed}
+.tbl-fit th{white-space:normal;word-wrap:break-word;line-height:1.25}
+.tbl-fit td.dc{min-width:0;width:auto}
+.tbl-fit td{overflow:hidden;word-wrap:break-word}
+.tbl-fit .ie{box-sizing:border-box;width:100%}
+.tbl-fit .id,.tbl-fit .it,.tbl-fit .il{width:100%;min-width:0;max-width:none}
+.tbl-fit .ita{min-width:0;min-height:36px}
+.tbl-fit .itn{min-width:0}
+.tbl-fit .lb{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.tbl-fit .ul-wrap{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+
+/* ── INLINE CONTROLS ── */
+.ie{border:1px solid #d8dde5;border-radius:4px;padding:3px 5px;font-size:11px;background:#fff;color:#333;max-width:100%}
+.ie:focus{outline:none;border-color:var(--st);box-shadow:0 0 0 2px var(--st-l)}
+.id{width:107px}.it{width:100%;min-width:130px}.il{width:115px;color:var(--st)}.is{cursor:pointer}
+
+/* ── STATUS BADGE ── */
+.sb{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;border:none;cursor:pointer}
+.sb-Completed{background:var(--ok-bg);color:var(--ok)}
+.sb-In-progress{background:var(--prog-bg);color:var(--prog)}
+.sb-Requires-Attention{background:var(--att-bg);color:var(--att)}
+.sb-Not-Started{background:var(--ns-bg);color:var(--ns)}
+.sb-Awaiting-Approval{background:var(--wait-bg);color:var(--wait)}
+.sb-Not-Applicable{background:var(--ns-bg);color:var(--ns)}
+.bl{display:inline-flex;align-items:center;gap:2px;background:var(--late-bg);color:var(--late);border:1px solid var(--late-border);border-radius:9px;font-size:9px;font-weight:800;padding:1px 5px}
+.bn{display:inline-flex;align-items:center;gap:2px;background:var(--new-bg);color:var(--new);border:1px solid var(--new-border);border-radius:9px;font-size:9px;font-weight:800;padding:1px 5px}
+
+/* ── LINK BUTTON ── */
+.lb{display:inline-flex;align-items:center;gap:3px;color:var(--st);font-size:11px;text-decoration:none;font-weight:600;padding:2px 5px;border-radius:4px;border:1px solid var(--st-m);background:var(--st-l)}
+.lb:hover{background:var(--st-m)}
+.lb.empty{color:#aaa;border-color:#e0e0e0;background:#f9f9f9}
+
+/* ── DASHBOARD ── */
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+@media(max-width:700px){.dg{grid-template-columns:1fr}}
+.dc2{background:#fff;border-radius:var(--rad-lg);border:.5px solid var(--bdr);padding:14px 16px}
+.dc2 h3{font-size:11px;font-weight:700;color:var(--grey);margin-bottom:9px;text-transform:uppercase;letter-spacing:.5px}
+.pr{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.pn{font-size:11px;color:#444;width:136px;flex-shrink:0}
+.pb2{flex:1;height:6px;background:#e8ecf0;border-radius:3px;overflow:hidden}
+.pf2{height:100%;border-radius:3px}
+.pp{font-size:11px;color:#666;width:30px;text-align:right;flex-shrink:0}
+.tli{display:flex;gap:9px;margin-bottom:9px;align-items:flex-start}
+.tld{width:8px;height:8px;border-radius:50%;margin-top:3px;flex-shrink:0}
+.tld.done{background:var(--ok)}.tld.act{background:var(--st);box-shadow:0 0 0 3px var(--st-l)}.tld.fut{background:#ccc}
+.tlt{font-size:12px;color:#333}.tldt{font-size:11px}
+
+/* ── INFO BOXES ── */
+.info-box{border-radius:var(--rad);padding:12px 14px;margin-bottom:14px;font-size:12px;line-height:1.65}
+.info-am{background:var(--am-bg);border-left:4px solid #ef9f27;color:var(--am-tx)}
+.info-gn{background:var(--gn-bg);border-left:4px solid #4caf50;color:var(--gn-tx)}
+.info-bl{background:#e3f2fd;border-left:4px solid var(--st-a);color:#0d47a1}
+
+/* ── REQUEST FORM ── */
+.rf{background:#fff;border-radius:var(--rad-lg);border:.5px solid var(--bdr);padding:14px 16px;margin-bottom:14px}
+.rf h3{font-size:13px;font-weight:700;color:var(--aud);margin-bottom:11px}
+.fr{display:flex;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.fg{display:flex;flex-direction:column;gap:3px;flex:1;min-width:130px}
+.fg label{font-size:11px;font-weight:600;color:#555}
+.fg input,.fg select,.fg textarea{border:1px solid #ccc;border-radius:6px;padding:6px 8px;font-size:12px;color:#333;font-family:inherit}
+.fg textarea{min-height:65px;resize:vertical}
+
+/* ── AUDITOR DOC CATEGORY ── */
+.dcat{background:#fff;border-radius:var(--rad-lg);border:.5px solid var(--bdr);margin-bottom:12px;overflow:hidden}
+.dcath{background:var(--st-l);padding:9px 15px;display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+.dcath h3{font-size:12px;font-weight:700;color:var(--st)}
+.dcatb{display:none}.dcatb.open{display:block}
+
+/* ── MODALS ── */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;align-items:center;justify-content:center}
+.ov.open{display:flex}
+.modal{background:#fff;border-radius:var(--rad-lg);max-width:520px;width:93%;max-height:90vh;overflow-y:auto;box-shadow:0 16px 48px rgba(0,0,0,.25)}
+.modal-hd{background:var(--st-d);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-radius:var(--rad-lg) var(--rad-lg) 0 0}
+.modal-title{font-size:14px;font-weight:600}
+.modal-x{background:none;border:none;color:rgba(255,255,255,.7);font-size:20px;cursor:pointer;line-height:1}
+.modal-x:hover{color:#fff}
+.modal-body{padding:18px}
+.modal-actions{padding:12px 18px;border-top:1px solid var(--bdr);display:flex;justify-content:flex-end;gap:8px;background:var(--bg);border-radius:0 0 var(--rad-lg) var(--rad-lg)}
+.mr{display:flex;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+.mg{flex:1;min-width:130px;display:flex;flex-direction:column;gap:3px}
+.mg label{font-size:11px;font-weight:600;color:#555}
+.mg input,.mg select,.mg textarea{border:1px solid #ccc;border-radius:6px;padding:6px 8px;font-size:12px;color:#333;font-family:inherit}
+.mg textarea{min-height:80px;resize:vertical}
+.mg small{font-size:10px;color:#888;line-height:1.4}
+.ma{display:flex;justify-content:flex-end;gap:7px;margin-top:12px;padding-top:10px;border-top:1px solid var(--bdr)}
+.mn{font-size:11px;color:#555;background:#f8f9fa;border-radius:6px;padding:8px 10px;margin-bottom:11px;line-height:1.55;border-left:3px solid var(--st-m)}
+
+/* ── SEED BANNER ── */
+#seed-banner{display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:var(--rad-lg);padding:12px 16px;margin-bottom:16px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+#seed-banner.show{display:flex}
+
+/* ── SP COLUMN GUIDE ── */
+.cg{background:#f8f9fa;border:1px solid var(--bdr);border-radius:7px;padding:10px 12px;font-size:11px;line-height:2.1;font-family:monospace;margin-bottom:10px}
+.cg span{display:inline-block;background:var(--st-l);color:var(--st);border-radius:4px;padding:0 4px;margin:1px;font-weight:700}
+.cg em{color:#888;font-style:normal}
+
+/* ── DIAGNOSTICS MODAL ── */
+.diag-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:.5px solid var(--bdr);font-size:12px}
+.diag-ok{color:var(--ok);font-weight:700}
+.diag-err{color:var(--att);font-weight:700}
+.diag-pending{color:var(--tx2)}
+
+/* ── FOOTER ── */
+.dash-footer{background:var(--st-d);color:rgba(255,255,255,.55);font-size:11px;padding:11px 20px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+
+<!-- ═══ SIGN IN SCREEN ═══ -->
+<div id="signin-screen">
+  <div class="signin-card">
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMjUwIiB6b29tQW5kUGFuPSJtYWduaWZ5IiB2aWV3Qm94PSIwIDAgMTg3LjUgMTg3LjQ5OTk5MiIgaGVpZ2h0PSIyNTAiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIG1lZXQiIHZlcnNpb249IjEuMCI+PGRlZnM+PGNsaXBQYXRoIGlkPSJjNzRlZjYwZTI4Ij48cGF0aCBkPSJNIDkuMDY2NDA2IDkuMDY2NDA2IEwgMTc4IDkuMDY2NDA2IEwgMTc4IDE3OCBMIDkuMDY2NDA2IDE3OCBaIE0gOS4wNjY0MDYgOS4wNjY0MDYgIiBjbGlwLXJ1bGU9Im5vbnplcm8iLz48L2NsaXBQYXRoPjwvZGVmcz48cGF0aCBmaWxsPSIjZmZmZmZmIiBkPSJNIDAgMCBMIDE4NyAwIEwgMTg3IDE4NyBMIDAgMTg3IFogTSAwIDAgIiBmaWxsLW9wYWNpdHk9IjEiIGZpbGwtcnVsZT0ibm9uemVybyIvPjxwYXRoIGZpbGw9IiMyMjYzOTciIGQ9Ik0gMCAwIEwgMTg3IDAgTCAxODcgMTg3IEwgMCAxODcgWiBNIDAgMCAiIGZpbGwtb3BhY2l0eT0iMSIgZmlsbC1ydWxlPSJub256ZXJvIi8+PGcgY2xpcC1wYXRoPSJ1cmwoI2M3NGVmNjBlMjgpIj48ZyB0cmFuc2Zvcm09Im1hdHJpeCgwLjU2MzQ5NywgMCwgMCwgMC41NjM0OTcsIDkuMDY0ODU1LCA5LjA2NDg0NSkiPjxpbWFnZSB4PSIwIiB5PSIwIiB3aWR0aD0iMzAwIiBocmVmPSJkYXRhOmltYWdlL3BuZztiYXNlNjQsaVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQVN3QUFBRXNDQUlBQUFEMkh4a2lBQUFBQm1KTFIwUUEvd0QvQVArZ3ZhZVRBQUFnQUVsRVFWUjRuT3k5YVpBZHgzVW1lazVtVmQybFZ5d05OQmFDMkFHQ0lBaGlJMGlDRkltRkN5U1NvdVI1TmpXTXNXUXRuckVVOXZQeTRqbmUvSk4vekl1SjkyTENWaWhzUzdKc3liSmtqa3hSb21ndTRrNEFCSWlGQUVGc2JPeExnMmhzM2VqdXUxVlY1bmsvVGxYZXZIVnZieUNrcHViVkYyQ3p1am9yOTdQbXlVd2tJa2lSSXNYNFFZeDNCVktrK1A4N1VpSk1rV0tja1JKaGloVGpqSlFJVTZRWVo2UkVtQ0xGT0NNbHdoUXB4aGtwRWFaSU1jNUlpVEJGaW5GR1NvUXBVb3d6VWlKTWtXS2NrUkpoaWhUampKUUlVNlFZWjZSRW1DTEZPQ01sd2hRcHhoa3BFYVpJTWM1SWlUQkZpbkZHU29RcFVvd3pVaUpNa1dLY2tSSmhpaFRqakpRSVU2UVlaNlJFbUNMRk9DTWx3aFFweGhrcEVhWklNYzVJaVRCRmluRkdTb1FwVW93elVpSk1rV0tja1JKaGloVGpqSlFJVTZRWVo2UkVtQ0xGT0NNbHdoUXB4aGtwRWFaSU1jNUlpVEJGaW5GR1NvUXBVb3d6VWlKTWtXS2NrUkpoaWhUampKUUlVNlFZWjZSRW1DTEZPQ01sd2hRcHhoa3BFYVpJTWM1SWlUQkZpbkZHU29RcFVvd3pVaUpNa1dLY2tSSmhpaFRqakpRSVU2UVlaNlJFbUNMRk9DTWx3aFFweGhrcEVhWklNYzVJaVRCRmluRkdTb1FwVW93elVpSk1rV0tja1JKaGloVGpqSlFJVTZRWVo2UkVtQ0xGT0NNbHdoUXB4aGtwRWFaSU1jNUlpVEJGaW5GR1NvUXBVb3d6VWlKTWtXS2NrUkpoaWhUampKUUlVNlFZWjZSRW1DTEZPTU1aNndkRWhJaEVWUE9XWHlFQ0VRTFFFTjhPQWY0Q0FRQ1FnQkNRSVBvZGlQOUM4WDhqNVpMSUwzNFI1VHUyZXFWSThSdEJIVG1OQWt5SDlxOVJYaU1TaWtrSFViSVJrNlAxUklCQUJFeE1CUHhiOUVlMDhxUG9UVXlLS1FXbStFUmp6RVJZTHdtWklJbkpnOURNOXpnSk1VVUExSkFmUDlmUU0xR1ZLQkVqRVVoZzB5a2kydld0c29LSTlBaVpSdm5YaUE0cGxZUXBQc2tZc3pwcVlPaUhDUklSQ0ZBRENSMkVJSUZBUWtBZ0NDVW5vWWpnQ1FVZ0lDbENGQ2dFcUVqQ2dRQkRPcElVQWhETFBFUUVWblNKZ1FJQUNBaTFRa0lOcEJCQm9FTWdOR2dnWXVxTUtTK2x2UlNmYUZ3L0VUSU1LV3BOQUVvUmFRUlF2a0ozVUtHSDVLS1dFZ1VBU3JUVVR3UkJBQm9nMUlKQUlRRlFTSVpjQWlJQVJNVEljMFFBSUFDUkpaelFBZ0EwS1VSQmhBSUVBQVZhSWJJRUpTQUVGdEZraThzVUtUNkorTGhFeUdBQkpTQUFFR1VsbWgxeDhFenZ2MjA5N0FuS2ViSzFPWmQxUlZ0VHJzbVRqaXN6bWF5RDFKclBaZ1M1RWp6WEZVSmtNeGtCS0JFRWtoQW9oQU1BQWdXQUF0QkFLaVFpUkFrSUdvQUlOQUNGSkFsQ1Y1TkVnWUV1UzFjNTZMSUdpNGhqTm5aVHBCZ1BYRDhSc2dDczhkQUFhQ0lQOWVYQjhIc3Y3UHpGOWk2Tm5rTFhsUUowSUJGQWg2NGpXMXR6anNEbWZDN3J5bncyMDVUeGNpSnNiVzdLdUxJcG44bDVUamJqVHM0N1dRZWFtcktlSTdLZTQwcnBDcEYxcFpRaTV6a09naVBReTdwQ2dIQUpFRFNnMEE2Uml2VFZWUHFsK08zQnlFU1lzUDJzTjlHTFNFVkVETUhWV2ttZ0g3MXg2T1c5Wjkxc2k1Q0N3aEtoQUVjUW9OSWlJT3J2S3hCQXo5VkNTQnFFVUJxVUFvbW9WT2c1NkFwRUFPRjZpT0I1amdCeXBaQUM4NDdUa3NzNmpwalFtczk0bVBIa3hKYVdqQTVibXFWd0hDK1RiWFdkK1ZOYWI1cy94WFlhMVM1VnBFanhTY1FJUkdqN1Foc3VTd0I3SHdFSUlRd2c2NHJ0SC9iOHp5MUhmQVd1Q0hTQXlNdUhvQkhSQVFBQm9SQUl3a0gwQ0lpSUVNQkRSQUhnYUsyQlNBQ0VpalJSeGE5UTVCOGxUUWd3Z0FBQ2tiUVNDQ2dkclFPSlNOS1RFQzdzeVA3NWt4c0ZvamFWSE91Q1pZb1U0NEhScXFQMUMvUUVXak45SVdsQW9jaEJPTnR6N1h2UDd6eDF1ZGpzYUlsVVZteklSYlNHZ0VCQ2EwbEFoS0NRaURRaW9FSk5Db0NUb0VKMFFIc0NOUXBBRVZkQWt3NEZPa1FBNUtHUWdhcElsMXlaOXdQSXlmQjM3Nzk5N1MzVGlFQ2dURjJpS1g2TE1BSVJ4cEV3RVFYR2RJZ0NnVUNISkNScFFoV0FrNkd3N09QL2ZQdndsdjJuTTVrV2hhQW9CQ21FSmtFQUtJaWxJYUlyNHNWMVJFQ0hnSUMwRkFoa1Z2c0lRQ2ppQlhnV2JCaVNCcFFTa0VnVEtLMURBaExraEdHSXFQN1RnN2Yvem4xTDg0SVFwSWpYR05tcG1rckRGSjl3akJBN21xREEyQm5Ec3h0ZFZJZ29WTVpURkFoODgvMlRlejQ0UFhYUzVDYUpEb0VtUjRNRUliVVE3TnRFQkNCTmdBUklKdDZGZ1BpZlZhejF6N3dCUk5Ta1NXc3BCQUk0MG5WUmhHRnA4eDF6djdUaGR0Y0Q1U3VNRnV4NTdSRjVqVEZkcVUveFNjWm8xZEZHTGtkRUFvMENNWENSOXAvdGUySDdrWElvTzFwekxabnkxWUdCM25Mbzg3cTVrSUM4YWg3WmF3Z0ozYmJ1ZDlBSmx3b2lhRklDUVRwQzZRQTBTQkVXUXJ4cjhady8rK3lLOXBaY3FNcWVLNjB3bXlqK2h0ZnJVenBNOFluRkdKWW9XRnRrd1JpVGpFUWlkSUtyUmZYeWx1UG5MMVZjS1dSWWRpVzVyZmw4VnZVV1NnWGYxMEJDU05KRVJKS2pYZXE4bG1aWmorTkNDUW1TWkJtdDlJZWtnU2pqZVpWeWNjNzBTZDk0ZFBXc2FlMStHSGpDMHlJVVRHNlJXbXZWdTlaUFk5VHNzZlNWMVJVTm85Z2JaVDU4eW1FK0hGTUZQazV6R3NZaE52eDE5QTBaZmVMcmJ2Sm9zaHFxYVRlcTYwYUpFVXNjZzJNR3dCWmhFUjFwNVd0eVg5bDE0djBQdXozWEZlU1Qxb0RDbGM3RXZNeDdzcmRZdmpKUXJDZ1NqaU40bXdXYmJGWUVLWnVEMWNCU1JPUUNxOElMQ1lrUVNaUFM1RGxPc1ZUdWFHLytQeisvK3U1YnBsWlVJSkFJTklFajR2WExVZmJMbUNaV2ZRNGovbWxNWXp5bVd0blpqbGlaNFhOTGVMOGJUdVhoU3hrcVR6dmJZWkkxcEpORXloRjdzajRyYU5TMHhNdWg4dnc0YzJPbzNPcWZHV05ackVjZ2JkcEFBRG9nN1FuYzNYWGxWenRPQmFnOFFTb0VGRTVJaUlDb2dpYkhrYzJ0R1M5enRWQWE4SDBGZ0NDa1JrQWlKQTJFaElMRFd5SVJoZzRBYVZJQVNwUFdwQUcwSmszRWNUS09oS3dyd3BCeTJld1hQNzE2L1IzekZGVXlpS1ExQ1JEZzF1dTFqWnRpemZXUEl3K0h6eHl1VnhLT1hqalVsemhNWmNhVVd5S0grdmZESXpIdlIweG1WK1A2cUdKRStrelV5bTdVZGREOFdIRURKQ0dSSmdKTldncEpCSnBJZ3hMQ3U5Slhlbjdib2U3ZVVtdEdrT0lvYkpTOGZDOGNEZUFnVE1wbVdqM240bURoVXJuaUs0MUtvMEJ5VUFNSkZBSWtBSVdnUTZJZ0RGR1RBNWpKT05tTW0zVmQxM1VrNll6cmdrQkFONnlVTHd6MHFzRDlqL2ZmK29VSDVtY0VhaTFCSUFvSEc1bWFEWkhnU1IrSDI5Vi9PNHhFR3FZKzlaeHl4RnFOVWpxTnZvME5oY1pRUkRJaWFaa0VJemE4NGN2UnlNOFJzMHFrSHlMbVpNaFBicUFrSEg2d1JrbUV4RXNEQWtXMFJZRUlDRkdwNTNaMEhUNTV2aldUVlFTQ3Q4OFNSUVVoS2wxR0pBaGRsNXpwelJPYjNlS2wwdUExR1hna2tRU0VLaVJWMFlGd1JBNWgxb1NtV1ZQYXBrNXBuVHlwcmJQSm1kU1NiMi9PTlhub0N0MlVkUjNwU2dmUDk0WC94eisrTW10S3k1YzNMVzBSR1NJU1FtQzhKc0h4M1dNZHY0K1RMRkhXV0xsKy9aOFNldUF3S2JYV2lDaUVHSEh5bWVmaHBWUDluRXRNSFhzcWoxNUVqRW1ESFdYaU1RbjJvVjRtYUhKTVdZMVZRZzQvV0tNaVFnTFFwQVZLSXRSYVN3a290RVJ2MXdlblg5dDlQTUJNRGlFSUZRQkd5MzBFaUVCYVM4d3FyUVZJbEtpMDM1YVZUYm0ySytYd2ZHOXhNQWliTTJMK2xLWTVuUzEzeko2eWFOYTBLYTM1OWx5bXRUVWpKUTZHcWh6cXNsSVZFZ09odnF4MFJZV0xzMkxwakFsLzlzVHFtUjF0bmUxNXBRT1VEanR5QU1qc2xqQ3hkQTJ0NFZGS3F0Rnp3YUVreGpEcHIwTmFtbG8xekdGNFhiUStaY1BXRFNXN3hpb1FSdGtoRFFuK3VsR2YyL0ROTkt6a3V0WDRVVG9GUmpOWWlWbzJFTUtJU0tRREhTQ2hSRW1Jb1ZMU2dUTVgrci8xekx1bnpsK1RiaGEwSXVVTDRXTGsySVRJbDBtQ2hGVGtveVFVUWdWRUNvaVVsNVB6YjU2eWN2NjBwWE1tTk9jZExVUlJRSGV4Y0tGUUhnakN3VW93UU9ocjdZZEJ5SFlvUXFERjh0YVczNTB6dTAwcWNvQVVDZ2tvSEp2TWtERGFBaFVQU3IxNU14VC91NzQ1MFpCSE5yU3Bya094YWFnS2d0V29SRm0yU1RsOGJZZm5BbmIrOWQrT0NhTVVidEgyejZFWlJNTjZqcFRuY0lKdXFGcU5wdmZHQkp0djJnTTBwRTFvRWtEVUwxQWROUkNJQkVJclRTU2NnV0x3L05aREg1NjkydXg1V2l1dE5ZZkJSTnZhWTMxVTZZcmpTQURVQURvSXdWZXpwN1F0VzlDMmV2bmlqb25aUXVpZkxCVzdycFRQRjNVaERFb3FDRWxKUUFFZ2hVU0JJRkVnQ3RJQWxCUGhzV0xmc2NLMVZlMFRsQ3BMQVpveWtocEl0bGdYSGs0TEg2VWtHV1VYMi9rMGZOL3d6VkFZeHBvYXBlK2t2bFpqNGdJTmM0QmFHVEw2aG1nZEx3NWJIeVpVa2tUVmhwYy9VTWNkaHRFODYwZkVGTjJ3bFBxMm0vcmZLUHV3dm9nYUlqU0VDclg5UWdRQUVqRlUydGNnVVlwZEI0NXVPM2krMlVVRmdGbzVvSlVRV211Qkl0NG5Ed2dvcGRBQmFaMEovUEtNU2Q0REd4YXV1R1ZtdmkxejhHcmZ6Z3NYKzB0QlVWT2ZEZ3JrQzhLOGtCSXlHdGlZREpGQVI3dDhIVUNVVWhSRGY5ZkZLM05hbTlxRjFCcWxnT3BTQjljejNqWEIvYzh2bFZLSjRXL1lMMURieTlkbkV3NzFzajQzSVdwaWxiUW1vZ2FUdFdIbURkVkZtK2tNWS9KUlZXMXZuRGxud2paTWZmMFQxUjRlRGZ1QnMxSkttZHlTOURpS2pyY1RqYWxLQUtDMUhxYU1FYnRYU2ptbTRwUlN4aFFjaWxFbUpDSEVtbHcwV3NnRWhZUkFvSWdJSEZkMG5mcm9GMXRPRnN1UTkxd2dKQVFOQWhDMUJnTFNxQUdGbzBrSVNlQUZvWi9QMGdOM3pMMXY5Unh2Y3Zab1llRDBtU3VEbFFvaFNpbWJYY3lSTElSdU1haVV0ZmFCQUNWN2ZZQ0E1eVVpQW9GQ2hVSWNLWmVPWHh0Y082bTlSQ1FJUkd6eWdtRXdXSjJJL0NDbFlYc0lRNndmY2lZZjB5d1pDMGdwSGRjWmlNQnhIQUFaVjBacHJZVkFvaVR2RUVKb3JabXQySnBiL2JoYU13a0JLQWdxU21tTUR3aEJSRVRaY0xZSklSekg0WW9KSVZoTE5OSmdjSENRNldlRTVzVXlNQWdDODhaMVhTbWxsTkoxWGMvelhOY0ZBS1dVVWlGTEppWW5yc05RM01TTXJOWmFDS0dVdW56NWNxbFVNaVVtcEJ3aWxrcWx3Y0ZCcmJYV2V2TGt5WFBuenBWU21nWW1MSys2M290SzVCNGdvdDI3ZDU4L2Y1NXpxRys0MXByL3hEV1pPSEhpNnRXclBjL2pSc0VRSExheFl5WW1YTEFFaTlhSWdPNWdTVCsvL1VUMzVmNnM2NFVFU0FTSUxQMEVvRUJOb0VFSUFoRWcrcFZnd2N6Mnpldm0zakovMnRHQndwRlQ1d1oxQ0VJNmpzUkljSkVFYkJHT2x4R0ZNQndNZzRBVUNDR2tKcVVSVUtKREJGcVRJR2pTVGtIb2ZWZDZGelMzTkRraVJIRGpyb0ZHeGhnQWhHSFkyM3VsWEM0TElSQ2pIcmU3SG1PaTFWcjd2bCtwVkV4L2pkN3c0QWV0ZFJpR2xVckZUTm02WHRVQXBKU2FObTNhelRmUDRYSGlRazZjT0hIaHdrZU80Mml0K3ZzSHl1VVNBQ0lLdXlCRURNT3dvNk5qeFlvVmp1T01SdDltZm9vSUowNmMzTFp0cTFKYUNNRjFRQlIyL2hBTHdIdytmLy85OTgrYU5VdXBJT2JGRWZyNituN3dneC8wOXZZT05RVU5wSlJhNjBLaHdFVExaTlBVMU5UYTJwclA1eWRNbURCOSt2VHAwNmRQbkRoeHlwUXB6YzFOUkRvTVE2VTBvaEJDMmhRNG9xN3g1cHR2UHZ2c3MxSkttNFFNVnhKQzhMQWlZaEFFYytmTy9jdS8vTXVaTTJlR1lUQU1WVUFkUVlaaDZMcnUrZlBudi9PZDczUjFkVEZkMlYxbnZ1Sm5MdmV4eHg1YnZYbzFDOE5oV1B5b052VUNrUWFwSVVCd1h0bDFlc2ZCanpJWlYyc05KRGhVRXdFSTBVSGxheUhjakZCQktjU01yRHk4WnM3NnU1Y0Z1Y3FyRjA1Y0xvSEVyQlFleW1xOU5RR1NGcUJ6S0tRakhRR0RZVmpTV211QktJVkFSVHJVSVRsUUFaM1hKRFVjTFYwOVUyNjd2YlUxQUtYSnJSOHR3eXlsbEZldVhQbmU5NzUzNHNRSno4c29wUnVhVEJDVFVMbGNMcGZMQ1Uxc1ZQMFRseDZHUWJGWVlrblZ5SDRqSWREM0s0ODhzdmxQLy9UUEhjZGhja1hFNTU1NzdwbG5uc25sY2dBUWhtRzlKUU1BUW9qQndjRjE2OWJkZHR0dHJ1dkdBbTBFODRtek9YMzZ6RTkvK2t5NVhHRWlOUEl3OFlsU2F2TGt5WXNYTDc3NTVwdmowcXRxV0tWUzJiRmpSM2QzTjVjK2ZKOFlBY0tWWk1IRmVmSkRKcE9aT25YcTdObXpGeTFhZVB2dHkrYk1tWlBOWnJXTzlEZDdGQkpEYlA2cXRmWThiL0hpeFVFUVhMaHd3WFZkVmhOc1dXb0VJejhjT25SbzE2NWRNMmJNZ0VoUmRJd1RyNkh5Yk04bFJOeTdkKys1YytjY1J5WVMyN1RId2xBcE5XWEtsQTBiTm1TejJUQU1qVWJhY0pWaTVFMjlrVlJVS3VPSnZVY3Z2cmp0UXdnVlNkQ0FHRXRMZmlxVGszRkFVTkFmd0lUV3B0KzVaODdhVlRNT0RQYnVQMXNJbFplVFNybEtnWlJLUTNWZUlnRW9KTlNoaDQ3blpMTENLUVJCUVZPZ1NHa05xQVdnMUtEY1RFVktxWEZRK1h2T25aODVJek94clZrRDZOaTZTTFNOZi9WOS8rVEpVd2NPSE14bWM5d1hXamNVSGR3TWdXaGtDQUNNWnNrWW84YkhibG5PcEE0SVFGcHJ4NUcrSHc0TURBd09EalkzTjl2TW1KVTNucXc4bHZWMWNCeUhiUkl6QzBkakVWbjJqSEFjUnlsV2QyV2lua1lkNWM0a292cStZcFdTOWRXNkJ0YjBqZW5HMk1OSHNkaVBjaTZYeXlkT25EaDI3TmhiYjczVjBkRngrKzNMN3JwcjdkS2x5eVpQbm95SXJQVHkxRzg0c3Z3K0RNTWxTNVk4K09DRFR6LzlOTmVxVnVZZ2tUYnNSZ2hScVZUZWZQUE51KysrdTZPakl3Z3FpQUp4QkJ1UGV3SVIrL3A2dDIzYlZpZ1U4L2w4RVBoV3YxVWRLTXhCQUtCY0x0OXp6ejJMRmkwS3d4QnFPWFY5aTRZandxajJCSXBJU25HcHIvenp0dzczOWZkN1hqWUlRMERPRCtLemVFRUlBZ29IQWoxOWF2dnZiMXd5YS9hVXJaZXVuQjdvSlhTbEowTU5RZ3VKa2ZQRUhsMEZJQVNTMXFqQ0RLRHJ1SjR1RGVoS1FRak1aS1J3cUJJRVZ5LzVWeStyVXhjSzV5KzgwSGYxN0t3Wm16K3plZVVkSzJSMVZsVm5qOTBLMS9VY3gvVThUMG9KSUlSQWEyWkVEOVpzaS9Sd0loSmlCSGtZSnh0QmQ3VW1BUWdoaFpCQkVNMHdwWlJSTE1GeVZNUlduN0FxaWN6WldkMDEwbUFvZFRRQjEzWFpndUlpR3RyQVVxS3hyTUJpRFdETklhMUphOUNhRDllam9iUTVXeUdQWjE3VkhCVkNBR2doaE9ONFdpdEU2T25wZWZIRmw3WnQyN1pzMmUyUFB2cm9paFVyY3JtYzcvdm1rM3JkajV1Z2xNcG1zK3ZXclh2MTFWZDdlbm95bVF4VkhUK0dHdEg0bTRVUVI0OGUvZUNEQXhzMnJHZStPWHkvR1MrSjR6aEhqeDQ3ZlBpd0VGSXBiWnZyRU1zcUlTSzJXQzZYcDB5WjhzQUREelExTlZVcWxZUmdIMWtTRWtSUjA1b0lBUVVpU1pTZ2lxSDY1YllUQjA5Y0ZwbU1BakxtQkVYU0VCSEJFemhRMWd0dW52elZSMWZrbXVtMWM2Y3VWcHlNekNrblVCQUlrcUNRZ0ZCaW9raUhKQ0RwNkxSQ1FvSm10em1mYit1dkZIdDdMdlNmUGxrOGUyN3c1Sm5peFkrd1hOSmhpQ0JlTzdwLzM2RzkvK0d4Ly9ESTVrY21USmpnKy81UU1vRkpWQ21sbENhcUtrWFdHRlJIMnA3VFExaDJTZGd1ZUNQZUFaSWRUVVJTWWhBRTlsdzBDaHUvTk55RWY1cjhXSUN3bTZTdnI4LzNmUmoxVWdGbjBkYldaa1FvbjJiQXpNR3VKd3NmMis5aTAySDhZQk1EQ29GR1ZiTExUTlROZEhVc3ZwUVFxSlJtZ3pNTVE4ZHhQTSt0VlB6dDI3Y2ZQSGh3L2ZyMVR6enh4Snc1YzN6ZmI2aHkyd3BuRUFUejU4Ky82NjY3ZnY3em41dk81T3FiWkJTWi9jcHhuTDYrdnAwNzM3M25ucnNjUjhiTlRLNlJtUGNRTStoU3FiUmp4NDRyVjY3bWN2bTRJWW5FVlhVMERFTWpCcm4rd3djMkpZa1FBUlJvSW5JSVE2bDdlZ3ZkNXdkOWRMdDdCOTdhYzFTakVDaEpCYWdSQkJLRlFqbWhsSTRJa1hDZ0dOeXhZUEovK2Z5ZEE0NTY0Y3psZ2hEWnJOSktDQzBjZ0FBMFNVQkNSVUlTSUpBQ0pRUVNvZ1pRb0FXUTFPUklEeHd2OFBzdm56elZjL0R3K2YwSHloY3V5RXBGRWFMamFDbkpjd1NJTE9UNkxsMzc3dmUrOThHQkExLzV5cGZuejU4ZmhxSGg5UFpvWVF5V2dmVWRSMVRqNWg3ZTBFcUFZZ1hMS0R4Z3pUbVRZWnlnbXN3UW5sR2ZFSzJhUnZXeEsxSmRjWW1MMWxJNlEwMmdCRmhONEt5VkF0YXZ1Rmlybm9DSXhXSnhjSERRTkkyLzByckI5azVUcXpxVndmaUVxajBBOFJadFJPVEdVUnhaSllRZ1FwYStudWNORGc0Kzg4d3pCdzRjZU9xcHA5YXRXd2VXamxlYklRQUEyOVg1Zkc3ejVvZDM3ZHJWMDlQak9IellBcHFhbUFGbHpjVjEzZmZlZSsvbzBhTzMzcnJFbHZsZ0dWL3hyd0FBYkVSMGQzZnYyYk5IU3FHMXFxMUNCS1VVSytxKzcwK2IxcmxwMDhaOFBoOEVBU3ZKdGdvOU9uV1VDSkF1RHZpLzJuWDA0TkdQdWk4TkZoRmxXRkVCQ3VtQkNwRUFrRFQ0b0R3dHBRYytLRFdnNEk1RmsvOWc4NXErRFAzcTlKbEs2R1pjUjJ1TkFnQlFBemdvQVVBakNTSkJBS1NGSUFSME5BVXE4TkFSVGdha0h1eTllT0ZvMThYOUIzcTZqdW4rQWFrMVNWSEtPcExRSVFsQXFFaUJCZ0FwSENMYXNtVnJYMS92bi96Sm55eGN1TkNzeWRoVVlmZFdIUU9yYWtwbXRFeVhqV2h1MldMVDJGME54c2VhaFFtSFpPSmJ3eSt4MWhYQk5lSmM0MXBSL0EvQmp0Y2RHcGJ3UjFiVmFrZzg1bFpoR0JyNVl5eGtUbUl6aTFpS29pRXRPeXRUbk4xRjhYdGdVdzNZQmlFeVh1dFlTSXBNSm5QNDhKRy8rWnUvNmVucDJieDVjMHRMQzAveFJQZHlyMG9wd3pCY3VIRGh2ZmV1KzlkL2ZkcHhIQURRbWh3bnNSS3JXVTY2cnR2VGMvRzExMTVidUhDQjQ3aXNqUEJYOW5Ed2NtTGNTN1JyMTY0elo4NDRqc04va2RKTmRLK1Vra1VyRWExWnMyYng0a1ZjWjJnMEh4Skl6Z2tpRUNBSW5kZjNkVDM3NXZFUHo1UXJCQlZGZ1phRWppQXRRQk5vUW5UUkVVSnFOeVFNUzByZFByZmpxNCt1R215bVY0NTFxOUIxTXFRZ1JENWFtd2laQ3dHNEJCa1ZCQ0lJUEFBK3RwN0FkVFBneXY2clBSKys4ZXJPNy8vVC9oLzkrUFM3dTROckE2N2pDTmNWQWoyTmtzL0RJQUtNbkNITXh2TDUvSUVEQjc3NzNlK2VPM2ZPK0J2TmtCdUs0djhuaElZdHgyenlNMzhkSG5ZbWRkMUlpVXg0Zk8wL1dSeTZodkNHUjhNMG81U0hkamExMVV2a1psUFVxSE8wOHVLWmJYVnNsRzB0ajBPcVdaZG1ja1VpRk1KcGFtcStjcVgzZTkvNy9yUFBQbHN1bHpGZUFZTGFrVFZqS3FWY3YzNzlyRm16Z2lDSXZRUDJDQUlpc2xCU1NqRlJuVHQzem5GY2lMMTZpYUdIbUlNTElhOWU3WDMzM1YxQkVFZ3BBVkFJQ2NtUkJTSlFTZ2RCTUhYcTFJY2VldGp6UE5Oa0d3MjdUdGlURFlDTldBVENjK2Q3eTVYS3NsczY3MTgyYTRJR1FKY1FoVUN0UWdRQ0VDcVVJQU1SNmxMb0xGNHcvVDkvZG0zRmd6Zk9uZ0hFckphRUFrVnNjbGhoTFFvb2tBSlFVb1ZBb1haa2tKVzlWM29PdmZ6Q3pyLy8yOE0vL2VtMXJ1T1NuRXpla3psWmdyQUVTbUdrU1dqYjhJaEhWQ21WemVaMjdkcjF3eC8rc0Znc3NsSnVENVgxUmMyTXNSK0dvcWhoZUpqaGx3Mm5vSGxqbFZoRDFmWDUweWo4Qk1OZ0xLc3F5UStIK1hhczJab1dDU0dNYjFOS0ZyeVJWbXluTlQxa3EycEJFQ2lsWE5kVlN2M0x2L3o0NmFlZkxwZkxFSG1HR3JoOEFJQ0Y0Y2FORzZucSs3SDFGQmF6b1pTU294RzZ1OC92M2J0WGE4MG1IOVg0QWpURi9qWTJ6bmZ2ZnUvRER6LzBQSThvY2twUmpZVG45aUlpQmtHd2R1M2FSWXNXTWFtUHN0TkVGR2RpcVd3QVNpSXRtam5UODhLUHJuMTA3TnpsVWhtQkFvbWdGS0dRdks5Sk85cVJIcFhrTFowVC92REJWY1dNLytyNXl6cklhS2xLV1JKYW9xOWxwSHhFL2xNa1VJaUJSczlIVDBob2tuNS83K2xYWHQzejkzLzc0WFBQOTUvNlNJQ25QY2NuM3duQ1RFQ3VSa2xJR2tLdGlCVWdhL295QlhKZk9JN3oxbHR2dmZycXE3YktaQjRzaXdqdE56WVFrWFY2S2FWdDVOUXpNNXR5RXBudzUzVVFRZ2dwaGYwN1dGUTZESS84N1FMTGRTUHhsRks4YXNjT0o2MmpNQmQyQ0J0UmFlZGcrb1MxUnltbDcvcy8vdkdQWDMvOTlZYUo0M0lSRVYzWHUrKysrMmJNbU9IN2ZyMW5td2M5REVNVGFyTjE2OVlMRno3aXVBSmJSSnZoNEpURlluSDc5dTM5L2RlRWtGcFR2WkZpS0oxREtSNTQ0SUZjTG11ejlRVG5yWWRqUjJ3em5XZ2tRY0dxaGRQZjdlcmNjL3dqb1V2NXJPZENHSVlhcFFjQ0JZRU9sU05FMFErbmRyai84WkZsK1hiNXh0a0xneHFhSkpaNUd3VnBrRUpGOWpERW9kMGNheVl3STNXNWNHSDM0Uk5idGx3OWVteXd2eGVrZElWSGZrQkFvUU9oMHFCOXg4bTRqcXUxUWhBRVNESHRtWTdnSGdUUXJ1c1dpOFhubm50dTJiSmw4K2JOczd3WEZJWWhLeEphYTlhUGFyMTVWWDhKenhoRGpZbVJUaUFXZCtEN0ZlT0FWa3JYK3dZaDhuU3pUWWdjRW1Da3BjV3RmOXNwc2NiZTVpRXdrenM2R29Hb1Vxa0FnT2U1VXJwc3BtQ05vUjdGMWdraEVFR3B3SFVkMy9kLzlLTWZUWjgrZmRXcVZXeXZKaWlCRXdlQmYvUE5OOTkzMzMxUFAvMTBRcjVSSEI1b3V0MTFuWU1IRDc3Ly92NkhINTRlaHRGUVJzMndyRmtoeExGanh3NGVQTWdxYU1LUlU4dU8wZmZWdmZmZXUzanhZaTdkRXRRampLdkQ5cjJwSHdCcW9DQW9UNXFVWHpDclkwL1hwWnM2MmgrNWU1NUVlR25yNGZQWEZHaEVIYmlPZ0ZEbTh2VHBCMitkTXJOMTY3a0x2UUZtWGZDVjc0SlVpbEFyalZJamVZQ0VVb05TT2tCeVVFamhCSDFuVHg5OWE5djU5L2I1L1ZlbEoyZlBYYlJvd2R5YlpzM0k1TE1TM0xDaUI0cjlSNDhkUGRaMXZPL2FOVGZqRWdrZ3dpZzJ6eUhTOGJ5UGFGSXA3WG5lcVZPbnRtN2RPbnYyYkxKc2tudyszOWJXbHNsazR1VnZzQlVoZnVDQjU0QVZBQWlDNE5xMWZoT3FXNnQ3MUR3TGdaMmRVODE3RG9tc1V5d05VOVNzc1V5ZlB0Mlk3UFpFaWRjQWhtR2FIeGRFeHAwejJ2U2pxRTF5M1V4cldyZnVudFdyVjBzcGlTTDNhYWxVN092cjYrN3VQbm55NUVjZmZWUXNGbk81SEpFSlBLak8xNWhqRXFMZ3BkVHU3dTRmLy9oZnBrK2YxdEhSd2FMVmR2b2pBcUlBSUNuRnBrMmJkdXpZY2VMRVNkZmxhQ3JONG92ekUwSlNGSWduaThYUzl1M2IxNjVkMjlMU0VvYUI3VVF4UkZpcFZONTc3NzJlbmg0T3h4RldLTFpSbnBuZWZML1MyZG01YWRPbXBxYW1JUEFSQmZQVjBRd2w4L3ZJTW80YXBFTFhjei9vdXJabmI3ZEFXRHhuK3ViVmMxeFBucnZhZitxdHJteW1TU0FFQkJyQ1RVdW1QM0xydk4wWHo1OHRGend2UXdwUXVKbzBhQTBvSFpRYXlBZmxLQVVCZUY1V2VGVG92WFJzeTdZek8zYVhyMXp5ZFREdHBtbWZmL1NKdTlhdTdlam9NQkVrQU9ENy91REE0TWxUSjU5Ly92bTMzMzViRXlHQ3BUWVl6WWYxT2lRaXgzRkxwZUwyN2RzZmV1akJLVk9tc2xpYlBIbnlWNy82MWQ3ZVhzL3prcUhlTlZOTkk4S0VDUk5aVWQyeVpjcy8vL00vSjVJbGZrWEVNQXduVEpqNDlhLy9sNXR1bXNYTzZFd20weWlraTJ5WEROTnFMcGZqZ1RTcmhTWmp1NGo2cWw0M1BtWStRMzF1UEN0UXcvWDFxbFVyUC9lNUp4TDFENEtnVUNqMDkvY2ZPSERndGRkZTNiMTdGNkxrUlFVQTBKcUVjSGppSWtxTTF2YzFoNmU5OTk1N0w3NzR3bE5QUFNVRWNQUzV4YjhpSFZKcnZXREJnazk5NmxNblQ1NDBVK05jUm9rQUFDQUFTVVJCVkJyajhHQWpuZmhYMTgxODhNR0JvMGVQcmxxMVNxbVFWeEVST1E0QmlFaEsyZFBUczNYclZqWlF0WTRDYmcwZDJuRWFpSGpublhmR2E0UENkc3ZYYTlHSk43VmJtUUNJd0pYaS9OWEswMisvZjdxdmtNdGtUNTQvdmZ0RXU1VE9pYk1YTWpucFNvMGFBSjB3eEpDRUFKMTFKYUVEcEFSQXFKR0FIRmRxRGFFS0FjaEJJaENZejFIb1g5aTE4OE8zMzd4dzdIUW1ERDBLNXk2WSs3V3ZmMzMxOGxXT2tMektaM3dxaU5qYTFycHk1Y3JaczJkUG1UTGxaei83R1FjS01XdkVhTkhQRER3eFEzVWM5K3paczZkT25lN3NuTWFEbE1sa2xpNWRPc3djU29EZHlrZU9IQWxENWJvMUFVMk5sRXlTVXQ1MDA2d0ZDeGJZQXMzbWtmWmNNY3FNUFJXTUo4bVlVcU9wNTdpZ1lSOHlBZFMvNTlIa0lBcmo1QUNBcHFhbTl2YjJtMjY2YWNXS0ZjOC8vOXpQZi82THZyNXJIQTl0dGIzcVROYWFwRVFwblNDby9PcFhMNjljdVhMNThoWE1ZYTA2UkozTTh2UCsrKzkvNDQwM1RwOCtIVzhIRVVwcE93S082eXVsdkh6NThqdnZ2TE44K1hMTEpxenhZTy9idCsvRWlST3NSdGs5WU9nUUFOalVuREJod2ozMzNKUE5ac3ZsY2x4dVRXSzdHeE4wV0x1MERRQUlTc01idTg0ZFBOZnZaWlVuOEZqUHRmLzNoM3YrK3ZzN0RuVVZnckpYS2FsQ3FWSW9EUG9WL2VxQlMxdTZ6aTZhM0RHamFZcFBCQkN5VHl6VXBMUkNRWWlrRmJsdWR2QnE5OTduL21YWGovLzF3c0ZqRG1xVU1LbHo2dGUrL0xXN1Y2NUZYNnN3NU9rWXE5RlJoRUdwVkpvd1ljSlRUejIxWWNNR1hvRmxZejNtdml6cjBYU2M0empYcmwzcjZ1cmlJQXhPSHdRQnIzMzV2aDhNQ2QvM3k2VlN5ZmQ5WmdlaklZWjQybEM1WEM0V2k1VktoY3RTU3RrLzQzZ2R4VnpkUERQVnNXYlYwdEppRFMzQXh4WmNOdzRqVkFNanAxc0Q4R1NJSEZPV0E0d0hZdkxreVYvODRoZC8vL2UvMk5yYVNzbVlUenQvSmc4dHBkUGQvZEdycjc1YXFaUWhabUZHQ3RuME1HdldyQTBiTnBnWnhWWkFJbGZUL3p0MzdqeDU4aVRIWkxQQndnT0VpSVZDWWNlT0hhVlNLWTZ5QW9nRGFJeGR5dVVxcFZhc1dISGJiYmV4OXlGUkhOWUM2Z2JYbG9RSVFBS2dxR0R1M05iL2Zlb3RZVVYvNzhVakEyWDV5TDJ6bTNPWllxVkMwV1kyUVFDT0psSVN0TTRvZlV1YmQ2SGdhQkFBbWdCNGY2SFVHcnhzSVB4VDIxNDkrZktybHovNkNKeU1sODBTaElVZ1dMOXF6UjJyN3l6NUFTRm1oREFDd1Y2d2xsSUdRZERjM1B6NDQ0L3Yyclh6d29VTG1VeVdldytpeVpva0ZrUThmZnAwb1ZCb2JtNDJ2amd6UXB5bW5qTnBIUUpJanYwejh5Wldlb2NFSWxzN3lMTnRxR2tFZFJ6VXdMRHdmRDV2a2hsKy9NbEFjdldzY2FMYXZqS3pEU3p0eXdUZnhBOEtnRDczdVNlVVV0Lzk3bmQ1L2FDK0JJeDJZeEM3dDk5NVo4ZUREejY4Yk5reWU2ZWk0ZHBNaEs3cnJsKy9mdHUyYlljUEg4N2xza3BWSjBwTXJsWDNUSGQzOS9idDIrZk5td3ZSRENGRHZRY09IRGg4K0hBMm03VWNFQkM1K1luTVZGRkt0YmUzYjlpd29iVzF0VktweEpzVnh6Q0NkcUFBOE5oblhlZU9lUjFaMFhtNVR4VmVQbHlzcU0rc25UZHJhbFBGRDRRUVNnTnc1SW9RUXFFR0pRVE5icEl6bTNObkNnVWtqVUlpZ1NPRTY3bVh6M2NmZS8zTjh6dDNGSXNEanBlVEdrRUZnTkNVYjE2eStCYlhkU3FCTHp6QmwwY0E4dFc4MWFuSkJycldldWJNbVFzV0xMaHdvVWRLSnd5VkVCS0FJdytUMFV4U3l0N2UzbEtwMU5MU1lrZDFtbXdUVThSOHluKzNvclJHczBSV1hSTmpQZGFpb3BwYTJVb3BXSndiWXRhZ3E5dTlheWI5SjBFZVVneXdYSWkxQ2FyK0xmc3JmakM4MytSakpFa1lCZ0Q0MEVNUGRYVjF2Znp5UzQ3akdPM0d0cjZGNEdBeGRGMzMwcVZMdTNidFdyeDRjV0t1Ry8yUTM4K1lNV1A5K3ZYSGpoM2oyVkxiLy9GYUFMSERSci83N3JzYk42NmZPWE5HUExVaXAvbzc3N3h6K2ZMbFRDYkRXaGlSTnBxamtSa0E0UHYrQXc4OHNIVHBVanRFWmt3REoreG9CbVEzRTVFSWhhK3hRSDRvdEJJS0FBVjRFbHdrNlRxdUl5bmprSlRrdTVUeFVDTTJaZkp6Mnp3SFEwRUNRc0tNQ3hSMnZmdnU5bi80M3NrMzN5aUZsTTIyU3RBYVE0NFVkUnpabE1zNlJGa2tMOTZGd2NjbGtyV2J4bkM0ZkQ0L1o4NGNwY0pDWWJCU0taZEt4VUtoV0NxVlNxVmkvSzlVS3BYSzVWS3BWRHAzN2x5OGl4ZHJtaFlydWpnRWpKMEp3M0o5RzJ6RXgwdC94ai9SUVAyd3k2M1B4M29aVFpSUGxIRllMOER0WDJQUFJ6S0JUWWVHakpsVk1SekgwWnJhMnRvKzg1blBkSFpPQzRLUXZ6WUV5MTNLRzYvWStOU2FkdTdjZWZIaVJTWUR6VnZOYXdlYVpkVGRkOTg5ZS9ic0lBaUVpTmFINHdFeU9RT1JkaHlucTZ2cjBLSERySWp5MWlmUDgwNmZQcjE3OTI2d1dHRzhrb2R4RUh5MHJOWFcxclpwMDhiMjluWW1TN01PUEhvNHhxYXE5aGNpT0ZvSzlJQmNyUlU2S0FBUWhPTkVTNkJTQUlJa25lZnRjNW9VMEp4ODgxRm40S3p2ZTFuMzJxV0xSMTkvN2V6YmIrdHkyZkZ5UUpwQ0RTQVFBQkZkQVlXQndYUG51d2tnMUNDUlVFUnltT0pqQyt4WnkzMjZZTUhDMjI5ZmJvOXhEYmVNSnpkdlM4MWtNdWE5blRMQk9CUGZtclVzUThDR2d5WittcSs0am1acElTNWlaQzVZMXdRRUVCekFCRUE0NWpDMFh5UHNUck5Fb2sxMW1EQUw2MldVYldYRVB3VVJDQUZLcVZ0dXVXWGx5cFV2dmZRU0FNOXZVWFhYQThiNkRtb05ucGM1ZHV6NDRjT0hac3lZd2NzNnNXUXpnMGhDU0tYVTdObXpObXpZY09iTUdZaEhOaDZYU0tRelNRTkFxVlI2NDQwM1Y2NWMwZHJhR3JzZTVMNTkremdRa3F1UENFeFpHQzE3S0E3cUtKY3JhOWZldDJ6WnJRQmdyMm1OcVljZGF4N0VESXozRTRIQWlENE5PN2NtRFFLQkFOSkVDS1JScStaTWJrWnJTMDl3NGFNUGp4eDg1cVgrVXljUlF5ZVQwUVJST0VEVTdDZ0lmY2YySGZkLzZsTTMzM3h6RUFRY1QyeGtvRDMyRk1kUHJGcTFhdEdpUmZXVEl6R2JoUkNaVEthcHFZa1hpODIyVjR1ZlZXMkQwYzkxTTNWc09vdzZvaGF4UlRkY3ZnMkY0U2NUZHZkeTM5WWJWdzFiazZCRG0wanNaSWlvbE1wa01tdlhydDI2ZFd1aFVHRGQza3FQc1I4dVNsOG9GQTRmUHJKKy9RYXM2dmxRSzBnQWdNSXczTGh4dzdadDIvYnYzNS9OWm12TGphckdVODd6dlAzNzl4ODUwblgzM1dzcmxZcnJ1bGV1WEg3bm5YZVVVcG1NRjRhS04vNG1xa0ZFU3FrSkV5WnMyTENocWFrcERBTXBIWnRyajc2VDY3ZEltLzJFbWlMQ00vMGFYV3hrZFM0aVV5cHBBVGhuWXZ1MmwxN2E4MjgvQ3dZSEtDczBCM3RqRkVJU2Z5dUl0T2U1UjQ1OCtQM3YvK01mL3VIWFpzNjhTU21WaUZlQVdPNmJOL2w4bnMwOGM1QU9NNTc2UVRYSFF4aVpabXRIMXNoZGo4bzNldnBwbVBJVHBXU09DVVNVeVdUWWk4dUlHOWlnVGZZZ21oUzExRnY5akJYTDIyNjdiZWJNbVFjUEhtUXRKc0ZiN1F3ZFJ4NC9mcnkvdjcrNXVRa2kybWhRQWExMVoyZm5mZmZkZCtEQUFVZ09oM0d1RUNKSUtRY0dCdDU1NTUxVnExYXh0bnpvME9FalJ6NTBYVGNNRlVBOXYyWWxTUGkrdjJMRkN2WVNTZW5VZHNzWVVHTWd4VVdBdWRVQkVZR2llMkJxd0pha2lBMGVGRHBVazRSc0d5aVVMbCtFTEFyUW9FRUJSdnNuckJab0RVVGdPTTZiYjc3MTEzLzlyZmZmZjEvcktNYVgzZnJzcFVob0wveFhEcVUzRC94c0ZnTjRxUUVSbVQ0VE10QzAwWG9ZYTNlTkZyOTVVWGZkMUQzU2h6VmFwYTF4eFRLLzdnTkVJdUxUZW1Cb0x3Vy9ONk16Y2VMRVJZc1dHWmxaUzcxZ2F4WkN5UFBuejErNGNFSEsrSnE5UnRYbXpPKzY2KzVGaXhiRkd5QnFXczMyaE5aUnlNZDc3NzEzNHNRSktaMUNvYkIxNjliQndVRm05MVJkRERQZkVnQ0VZVGh4NHNSTm16YTF0TFFNMWNaUm9yRUZTWEVVbXdiZ0RmWUFSak0xekltaU0rK1JiU1BodWM3eTFYYzBUNXdRaGlDVWNEVUpiUjNXWlhFMWpDMjlIVHQyL0xmLzluLy80ei8rNDdGanh4Q1JqekNoT09UWHRyNEFnTmNiN0ZCcEo0YnJ1dnpUWG9lNFBsbjNDY2RROHRWV2x1S1VvNW9XSTZXS0xMcDZnNGZWMFlZZHJMVXVGQXFKQmU1RWpXMkdTRkhZdzAzMWlXTmRMSm9Edk1XMldDeWVPWE1HNG4ySmpiNWlycTF2dXVtbVQzLzYwN3dodzA1bW5FbUlxRFU1am5mdVhQZVdMVnNROGNTSkUvdjI3ZU9WUTR6ZE9mWWN4bmp4YlBueTVjdVhMNDhEbFc4NEViSWxyVFg1Z2ZaOUZTcCthOXpNQU1DWGZqSmhhZ0pBZ1NxY2Y4dWlPMWF1bGlXTjZQZ0lJS3FPYWR1bVp5blBOc2FGQ3hkKzhwT2ZmUE9iMy96V3Q3NjFZOGVPM3Q1ZXBrWW1KeVAzTVBhN3NFZzBXU1V5Tnh6VTVySy8xVENtbC9Fb01PS1dSbzlVRzdsaU9xUTJuK3B2MXZ2a2d3Mk1sdWs0R252NGVsYWYyYTR6bncrVkxkVkdmazJZTUlGM2hDYmtvZjJUSDBxbDRwa3paeEhSTEQvVTE0VGp5NFRBZGV2V0xWbXloRTg5cEJyWFFDVGZPQWV0OWRhdDI4NmNPYk56NTg2ZW5ndngzb0RxWERKZ0VkTGEycnB4NDhibTVtYW8zZjlkWDU4UjBYQm5QUUFJSlZTVGg3K3pabkZ2cWR6YUpBSEFYQ3hQQUFBQ1FVQjBJelVLQUFJS1FqMnBmZElqRHovNC9udDdCZ1lHWE04bEFxMnFoOTV4cjVvS3M4VGo1YzdqeDQrZlBIbnk1WmRmWHJSbzBhcFZxMjY5OWRacDA2WjFkSFE0anNQbnNqQkhSRVFBbExMbXhBNmI4TWJxSGY1dEFQSGVBclA1RXlKVkpibVFhQXQvODk1d0t5czM0aTBkRnZNMlJHNG1VSFVtaWVwWk9EVStNNnRvTkg0T1JQYngxcWlVUXdsRDg4eWoxdGJXMXRyYTN0L2ZKNFNJM1o0TjRoOFFSYUZRNk8yOXlrSFNsdnZVcWtwTVlMeTk2TUVISCt6cTZtSTZSRFNCVmpWc1N3aDUvdnhIcjd6eTZyNTk3d2RCeUF1R2lkckczMnF0MWIzMzNydHMyVEt6amw5Yit0alFnQWdKVUlJQ2hXVW4wM0hIakFuYUw0SFFIQ3JQWjNKckFpQ0JnbGkzanZWckxVUVlCS3RXckxoNzNkMHYvUHNMSG5vNmRvMllRQzJycnRFazRHWmtNaGtoeE9EZzRJNGRPL2JzMlROcDBxVDU4K2N2WGJwMDZkS2xDeFlzYUcxdFZTcU14YUR4MW9EdG02bk52TFpGL3l1SXhCb1hCYUpRS293aitCcWxyblZGMmdKbmlNekpFQkt6Y2twdU1xcmFJblZEQ1hacDVrMDlSMGlNUW9LWW01dWJtNXFhcmwzckUwS0VJUytGSjdVYmlQMXR4V0tSb3pTTnBtcUQ0blVSWGt1ODk5NTdYMy85OVYyN2R1Vnl1U0FJRU8yUURHUXh3TFAwRjc5NHJsZ2NaT2RRbkthNmsxaEU1emlwdHJhV0RSczJ0TFcxQlVHQTBmYlU0YlR1NFZGSGhFUWdVSWFxb25ETGhaNWZYYmtJR251TCtuT2VrL2M4RFlSRUFwRllwZVpickNuU0FQaTBqMHcyKzRVbnY5QjlybnYvL3ZmeitlWWdDSTNIT1I2U3FoK2ZxWkVvYXA3cnVwbE1KZ2lDeTVjdlg3cDBhZWZPblJNblRwdzNiOTdxMWF0WHJGZ3hhOVlzeDNHVlVyN3ZzMjJvZFhKUUcrby92NzJxYWR5VzZtd09ncUMvdjcram95T083Ump5UTd2SjJXeldQa2FGa21mU0dPbEtabmtXYWs2Q3JDYURPZzl6Z2xiakloclh5aVpJTTFMc0lNaG1zL2w4UGd4RDEzVVFFYVBMTUJzd2JrU29WQ3ErNy9PZWxjU0ltMDlNL0JPSGxYM3d3UWRjVUdJL3NkbEFEQUI5ZlgxOFZJeGhXeHhNeC9uRWlsdTRaTWtTUHRNbzdpdUtlVmF5SnFPWmVBMGtvUVpDekNoUnVTeEtZZWhnQ0JkVWY2Z25BV0owREdCVkRRR2dHcWJMVEdYV3JGbGYvZXBYLys3di91N3c0Y05TdWtaZXhVcHBvcnE4NUJJZEk4a3hoSTdqQWxBUWhKY3ZYN2wwNmRMdTNYczZPenRYcmx4MTU1MnJseTFiMXQ3ZUhnUSs2MW4xYkhMNEJ0c1lvK3JlMkJuNDY0UFJETG5IR0dFWUZncUYyR29DMjdvYk9nZGc5OVd3RXdKalVpVGVXRFJpNXNPallUbERsYzd2bTVxYWVJZVhQYk90cjJ3SGUxTGxGa09jL214bTJwbzFhMjY5OWRiZHUzZm44M2tkbnl0SjBXYlVxcytHNDEzaUdHN0JOcWZSWFRrMnRhMnRmZVBHalJNbVREQkhyZHZ0YWlqdGgwY0RDMG9EVm9UT0F0M1YxckZrWXVzdEUvT2ZtalNsTlpzSHBWbEpKMnVuaVNuSktDRWNUM0RISFhkOC9ldC9OSC8rL0ZLcEZPL2FiQnlReVgwbGhBUkFJdVFOMTBFUWFnMk80enFPNnpnZW9qaDNydnRuUC92WmYvL3YvOCszdi8zdG5UdDNCb0VmZDFDRGZyZC9Ec09OeGlnYWY5TytWdE9yaVdkR0xBR01leVlKdTdabTFhZWhwbUMwRWtTaHRTNlh5OURvZklCZkIrSlNFQ0pPWWV3TGlxMGNtK1VEeENjc2NxQml2Syt0d2FtZTVsdGUwSnN5WmNyR2pSdFprNm8vRUl6bko5dTlTaEdpRk1LSi8xS05Pd2NBMy9lWExsMjZaczBhOWp6ZEVBMnJqZ2dSSlpHa2lnWU1QcW9zR0F3WEtTcWNHOUNCTXFGY3htK2NhRGtMY0NsUkNQVDk4aTIzTFA2THYvanplKys5bHpXSE9uV29TaDZ4aE9SVE1TUFBwNzJsQ0JHejJYeExTMHV4V0h6NTVWLzkxVi85MWJlKzlhMFBQenhpYjFSTFRGbW8wNXJxR3o5NkpXcjRmRWFUODNXZ1h0RUNxK3NNMTJNTVB4TVNORnlYTFlFMW41UlNFSjJrQ0tNUi9xUHMyMkdyRitWRDFna1BwdVpVOVMwaDhlMUFRbFFxRmJObElXRjVXdG5XN0hXNjg4NDdWNjFheVVjblF5elp6TEFhM2RWa0tLeFQySXc2MnR6Y3ZISGp4dmIyZG5zLzJzZmt6ZzNVVVFSeVFCUVZQTHY3MkVzN2oyZ05pMmQzM0RwdlNtZHJOaUNVU0FLTkdwcG9OaUpLZGxWeHBNK1NKYmYrMlovOTZkeTVjMTU4OGNVclY2NTRudWU2am9sb2lTV2s0cDFBU2ltTzJjVG9OQmt6enhBQXdqRGdUblljdDYrdi8rYy8vK1grL1FjZWUreXhoeDU2eUlUOFlkVUhpMGI3SGQ1ZkdoTnExUWtSWndLeFQ1S2xUVU5IWDQwNzBjcHdyREoyeUxwWkJkVmdlUFpoYVhUVk4yQjUwaHN4YjdTOUlQd1JSbWJZa0lodE5udTNDaEVwSTBpSDZYL2JhaldUMkpDRUVmSW01NWdZYXRhZnpGcElQV3hWaUsya2pvN0pEei84MEtGRGg4cGxYMG9aaGtvSTQ2dXZUam1iZDhkYWE3UkZwbElKbGk5ZnVYTGxjZ0RnRGFzMkFWODNLVGJxSU5LSUdKSytQRkE0MTFjK1B4QU0rcW9jS0FCZE5VUmk5bURQZUxOSnhaeG1Gb1poWitmVUwzN3g5Ly9yZi8yLzdyMTNIUyt6c3RWbkJ0dnNQMkExZzhQWWhhZ0djTWREUXF3d0VKSG5lYmxjL3N5WnMzLy85My8zbmU5OHA2ZW5oOHN5TE5Pa0hLV3FFRk5ndFN2am1HeXdsa1lhd0xndUVsTHJSdW10M04rMkN6UWhBSzJVTlFtZ01hVTFrRnFjM3hERU5scGUwckNyaCsvOGVqWmgzREQ4Mm5Sc1BNRWc5dUZGZ2Y2bU9YYWowRkt2VENrVW5YTkRhOWFzdWYzMjI1VUs0MW5IQ1NqdTUrcGt0bmE5VkxQTjViS2JOejh5ZVhLSDdXczBEeU0yZVNnMFdxSWdFSHpXYWhCa1hRZWxLK0lhVnJjSzFFWXptVzZxOVdoSE81MmxsSGZlZWVlOGVmUGVlZWVkTjk1NDQ0TVBQaGdjSE14a01ueW9BZmVtc1pMQjRwRjI1cUo2VlZCRVhaNlhVU3I0NVM5L2VlblNwYTkvL2V1elo4K3VWQ28yZnhxeFUwd25RaVNXby9yenlhMUUxZG5mTUJ1aUJ2UVoxM3gwM1Q4S0RGT0JJZEtQMGQwVW5RVDNHNFV0OGN5TU4rK0ZFT2FnRjZoU0kwRFZ0VTR0TFMxOE1KY2h0Z1JCMnIveWlDaWxXbHRiSG56d3dRTUhEaFNMSlNrbEVZZUdWdjJ1UmpQblRHeW1VS2xVMXExYmQvdnR5OE13V3VSb0tNQ3ZndzRicXFNQWdMeHJWeFBwTUFpVjlwVmlBaVRlN2dYQ1ZsWGlCaWZkbm9qUlZUV1ZTbW5peFBaSEgvMzBxbFVyMzM5Ly81WXRXejc0NElPK3ZqNGk0dTNKYkN0YnR3NGtXMkxMM3BnYVE1YTNXN2R1RGNQd2ovLzRqMmZQbm0xcjZpTjJSNklUelVOTFM4dG9GdjB4dHFDc2duNHRIdFJmcTR0a1dFbjQ2NFUxbE5GbFJ1ekc0NnQ3RU9WUUhoY2lzTS9Vc25TeFllejJpSkxYckZtemJObXkxMTkvdmJXMWxVLzBIc1dRSVcrZjM3UnBVM3Q3ZXhnRzVqS1orcnFOc1E4QUdrZk1SUHFQamk4TUVJT0ZRcUZVSm1pSm8yT0lrSURRakowcE81N05SR1FFQlFBQW42Z2xoSmcyYmRyVXFaMTMzbm5uMGFOSGQrL2V0V2ZQZTJmT25PRU5MUEhCdXlJTVE2amVmRkN0VjhMVVlZNklpTGxjN3QxMzMvM0JEMzd3alc5OFkrTEVpUlR2c2JCVmhZYTlZdzhZWWxYSjRadWM0L2RENnBhSUdJWmhzVmlFcW5MMW0vQW8vaStBaHFSU0xCWXFsWXJqOEM0WkVxTG1wRjFMSzBIMmNQSXdqVGp2TWQ3MUw0UlVLbXh1Ymw2Ly9vSGR1M2Z4Z2ZteG9ndFFGYlkxU3JJUUFoRUtoUUl2VnV2b2FzZmhDWDVzYUhnL0lSbzdGWUJ0M3pBSTJXTUdTQnFnYXRFWkFXTFgyM29Hc0s3ZEV3TERNRkJLdGJZMnIxNjljc1dLNVQwOVBUdDM3dHE3ZDE5WFY5ZkZpeGY1MWdFVE9KclFTT1BzbzBlejVDaUV5R2F6YjcvOTl0eTVjMy92OTM2di9xUWRHTmFWVExFTHg5NGVaUW5KQnVsTjI1VlNUSVJ4ZDEwM3hrRVFqUzhTaGh3QUZJdkZRcUhBbWg0dmtldnF0WDVWZHhmYjRjM056UnorWXFiSzBBVkJiRXhLSWlCU3k1Y3ZXN2x5eFpZdFd6S1piQzBqNW9KcXhnSXgyajYvZnYzNkNSTW1sTXNsMXgzaFlPaXhvZ0VSS2tCZks0MmhENmhSQXdVa21nbWxKcEtnTkFnQ2xCUUNTQjFmcnplVTI4MzR1UGtRZUtMb1FXc0tReVdsTTJQR3pNOTlidFlqajJ3K2QrNWNWMWZYM3IxN0R4OCtmT3JVS2ExOXZ0YVR0ZG1FWFJRTDJNaFdWRXA1bmxjcWxmNzkzLzk5K2ZMbFM1Y3VaYWs3cG82d1pheDVqclg4QnU0N3NLd09TNVdGRVlWaHJTU1BmbVl5bVRpZTAvaGFhenoxWmdwUzVEY2krLzB3c2pyQkg0ZVlySTIvWjEzRC9GbzlCMmNrakNhZHFadUpST250N2V2dDdVMEVCcHU5ODdGNEZBQ1l6V1luVDU0TXczcGZUU21KV29XaDZ1aVl1bm56cC9mdTNWY3FsZmxPR1A1N0lnWWd6a0VFUVhuMTZ0VjMzWFdYMXRyelBHT0ZqcW92Um9FR1JDZ0FKS0NqaFVPdUI0NkRqZ1FQdEVJK3dORnhDQVJBU0tRSnFnZS8xWXRFaUlsUUNHRnpQUURpODFzQktBaEMzdHE4WU1HQ0JRc1czSHZ2dmQzZDNRY1BIdGkrZmNlaFE0ZjYrL3RaUjAzSVE5c1R5RVh6OGF6bnpwMTc1WlZYNXMrZmIwNVlTMGpzZXRqMk5GcnhoSWxrVEMvMS9wNDZ5N1BxUWhnR3RnWFBHZWJ6ZVNKTnBJallSYUdIcDJjaFVLbklkMXBmbkczZjJ2V2tHSFVOUk5zaFlUNFhvb2FNS2Q3N00zb0pNSXhsYnZNZ1Znc3ZYYnBZcVZTeTJZeFNmTUVnMTFuSEo1NUUzd0ZBVTFQVDlPblQyWU13R3VPL3RqNVNhN3JqamhWcjF0ejV4aHR2R1FvSGEvWWFrNHFuUkM2WGk2MUJydGpIV3BDb1IwTjFWS09BVUdKRlY0cCtFWVV6eWRlU04raWlFSWlhMTNBUWJRWnFhUTVKSkppeG1RZnNWc0Y0R1JRQWNybmNMYmZjc25EaHd2WHJON3ozM25zdnZ2amkvdjM3T1U0M1lkckZFb0NNTXNtNTdkcTE2OUZISDEyNGNDR2ZVMkNYMjdCNm85VHNSem5LdzN0VGExTkdLYlJXZkJjOXZ4NUZFZVpEYmZiNERWT2NUVUxEcmhOV1M3ZDZJeUVUYnFUUmExZ2VJd3pEN3U1dWkydVkwbXNxeTNaNFUxUFQzTGx6emQ4U1RLZHVxaVM0cDFaS3RiUzAzSFRUVGV5R3RWZEU3QW95MjFVcWJHdWJNR1BHREFCZ1c5VFFwNTE2R0h0blJEVDBqZ3BGVWtxeFlOcms4aEkvbS9GbVQybVozakdCQ1krcWV6ZFFDRlMxd2RsRHdlWXhObmdWRmF4NFdWN3VhMmxwZWVDQkI5YXNXYk5seTVabm5ubm0yTEZqeGhWbTlXYTFsOW1ua3Nsa2VucDZEaDA2TkgvK2ZJb1B0SU1oM0FDbVBqZVFwWm1jYU9qMStnVFptNDdocFZHS0w5d2o0ZzFIYU9kbW1JNVJrdVA1MTdocDljb1l4RnNCK0p6NVJOWDRmelp0MUFxSGo0dDZyZDVVc3JlMzkvRGh3M0gxMERCWnNOYjl6YmZUcDAvdjdPeTBLMlpuV005WWEwMkd5QU1YdjZ4NlJ4TjBhejdublFrVUw4cUx1dnNNb1k3eXg0UkdSSWdLVmJuVmhhOCtjbHNZM2lZRlpoeG95K2RJazBDcFNVdSs3dHBTb0EwWjFPZG0xN1ZlaXpNLzdhQWhuaVZCRU9UeitjMmJOOCtaTStkdi8vWnY5KzNieC9kSnhBMEcrMlJsRTc4V0JNR1JJMGZXcjEvUDhmaUpRdzBhNHNiU1laem5LSk1aT2lIMlF4Z3JPcEdiV1pQa1RTUUF3QTZNdUt3YVc4Qk10ZnAyV1VSbDNvQlpKOFI0U1JaaWxjeStla0hyeUdGdTV6ZFcyV2dUaWRtcDZEak93WU1IUHZyb1Fod0IwemhiN3E0d0RHKzU1WlpjTHNkeXlWQ3lMUW1obG12WVRSQkM4TVVoUE4vNHdYUWJ4T0h5aVFvbnp2Vm9TSEkzVWhJQ0NDVXlrdFQwTmxlRm9VL29Da1FLTkVwQUtmbDRVRUFVZ2lOVGVGRmh5NVl0UjQ0YzRmVjNPeTk3WnJpdWUrM2F0Vm16Wm4zNjA1ODJweExhOFh1bU4vazhCYTIxNy90TGxpeDU2cW1udXJ1N0wxKytiRjIzMHBqcnVLNTc3Tml4Z1lHQjF0WldjMGp6SnhZV25hRE5xdXY1QXNhSDFmcSszOWZYRnljd1VRSFZUZ2JMMElWNFp2QzFtN1hxYUlMOVI3RVdSR1FkdFZUbHNFT3crUWFTZGhqVUN5aWx0QkJZTHBlM2JYdW52LythNDdpOGdHNVZvS3BKOGt6TDUvT0xGaTF5WFRjSUFoM2ZFUVFXZWRkM3NwM0c5b0hiYWVNbGU4T1ZxbitMZFljYTg5amtQR0tyUjBTQ0NObW1rUUlsVWtnaEFFZ3BKUkFKS1RBNktWZ1FFTWJYOEJybTlQYmJiNy93d3IvbjgzbWpUUW5ybE9Lb01NY1pHQmhZdDI3ZHhvMGIrWklObmhaR3ZoczExWFFaWjM3YmJiY3RYNzc4cFpkZVltR29OWE9tcU10NG5rQjhxa0pQVDAraFVJRG9RdWJxZnZCUEdtSi9Bd0pBUHAvUDUvTytIOGE3Qkd2MmF4c2dZckZZN09ucEFZdUFNYmxOdnByWUpMdHk1VXFwVktxVmpWV3ZvMUZRV0RMWUJ3VGE2cWpuZVUxTnpSUWI0UkNKMHhHOHIxcHJ2aXlBcU1hQnpHZUJJcElRY3YvKy9UdDM3b1Rvc0cxQ2hQaUN3YXFaTGFMalRvSmJiNzExM3J4NVJwQ09WUS9rbXNjQ2tBeVRzVG9OcVlZK2tVTUlJR1lFSnVXTlVxQnFKeWd6QUNRSFNVZ0hIRWM0cmllRUl5V2dneWlrRUx6TEE2M2hZV05zMHFSSnJsdTlxWmFmM0Zyd0FQdSt6eWRrMnlSYWI4Qncvc3kwY3JuY2tpVkxQTStMdDdvSkFPU3JLL2pUUkFUdDRPQWdWTDE1dzFsb3YzbVlldHFTcXEydHJhMnR6WTZIdE85Yk5tT05pSlZLNWZqeDQvYnhZYXpFbWg0aks2NlN1eXNNd3pObnpnd01ESmdKWkxRSit4K2pxYW1wdGJVVmFpWlpOTVZkMTIxdWJyTG5xMlcrSnIwVXBWTEpuRXRpTzN0TlZiWFdRZUJMS2ZyNitqajIwUFBNMVk2Q2R3SWdvcm51azdPU0VsZXZYdFhaMmNtRjJwY0tqckx6MllGblY5YjhRK3VBVDlNb0tjWGc0R0N4V0tqdHVodUoycnNjT0F6R25GOWlPb3dJaWFMdEJ0WjJBWXd0WnNkeFdscGFlTE9TMGNqNWFBQTdmK1plbHk1ZHVuTGxTcjBlYjJCblRyRU5QV0hDQkV0bDVUdHg0MnFqZVlqcVl3ZHpENytTTmk2dytRdlhlZEtrU1JNblRqS1hvaGdKeVRCZUdaNUFKMCtlUEgvK3ZKUWlES1A5Q2drTkF1SmJoL21yWXJGNCtQQmhzNjV0QWVPZlZhZmlwRW1UT2pvNm9NYVpFWlZlSTBmdFhCcDFiNkZRaVBlOEF0U3VnSnZ3ZXNkeGlzWHlzODgrKzg0NzczaWVwNVMyVk1jYSs1WTV1Ky83TTJiTVhMdDJMVi9aYVdwMUhmMVBROThERlRjS2JXZVlIY3Q2dzFGN05Wbzh6YU5mN1Q5WnY5cWN6engwZG5ibWNrMWhhSFlTZ1czVFEweE9udWRkdm56NThPSER6S1J0L20weU4rOXQ2VitwVkl5NE16S2tJWUdSWlZiZEVKWDloc013R2pQbldscGEyTjNIWVVCS0tUNVVNd0cyWjA2ZlByMTM3MTYrbXR0YXRhOHE4Q1p6SXVMckc4NjNSUUFBSUFCSlJFRlVGZzhkT3BUTlpwa3lxUm9vejVXSk1tZmRaTXFVS1oyZG5YelRwY2tLUnBJMmlWVUVSR1NEM0FnOXJmbEdMeFVUTXlHS2N0bi82VTkvK3ZUVFR3T2dFQTNPb1FZQTN1TUc4YkRlZmZmZDgrZlA1NU5kVEhFVzZZN2M3Y1AveWM2RHFwc2JrNTF3WTJkWHJTU015OEZoRVZlUkRHOG1vcHR2dnJtcHFVbFhUNGt6MXdYWHJONFFVUmlHYjczMTFxVkxsOHdSbzFRSFV5V21WYVhVeVpNbnpjbjJpR2pPMVluNWRGUWxBSEFjcDZtcENVYWFOM1lyUnRkWE41S2VzYXBpWVJpR3VWeHUwYUpGYkNlYmk5bXNTa1lQSEZsU3FWUisvdk9mZDNWMWVWNUc2K2orUTdNYmxZOW00UFJTeXY3Ky9sLys4cGVYTGwwV1FzWnMwWWcrenJ6R1l6RnYzancrNmR6SWlWcjFaRlN0czJndnV2V2F5K1dJUXBaanAwNmQrdmEzdi8yakgvM0k5MzB6MVdzekFiTU1JNldvVkNxelo4L1p0R21UNDdqMnJvdlI5N2xwS2ZNZ2N5bXRHUkdJQ1crb3pCT3o1VVlKeGpFN0xRelhzVFhHTUF5blRaczJlL2JzV0FWTnNpWDcxMncyZStEQWdSZGVlRUZyemQ1T1hSY1F4VG16VnVsNTNwa3paOTU5OTEzZjkzbUM4bndEWUsrOWNhWWpBUEE2TEo4R0dXYzFuQzZLbzV0Wk5sTzhnVEQ4MjNYZEpVdHViV3RyZytoc1Z6RERYU3RrZ0Vobk1wbFRwMDc5d3ovOHc1RWpoeDNINWZOamJCMkJiWExYZFh0N2U3Ly8vWDk0OTkyZGp1TXFwUUVFRWJJNWJkdVovTUJIU3E5YXRZcnZ0ZVhNWXZMalRtak1zT0xPcVZFZ1dhN3l0ajBpNXJPNlVxbGN1blJwMzc1OVAvemhENy81elc4Ky8venpXbXNobk1RRXFPWDJVUkZTeW9jZmZuaisvUGtjVDJNK0diM1dZeEx3dC9iZHZYWVBKMGJINXUrSkltNlVKR3k0UkRFcTJDSU9BTnJiMjIrLy9mWTllL1pBZE54VHBDd0pVVTJEMWpycE04ODg0empPWno3em1Za1RKMko4eEQzVXRwYlAyejU3OXV4UGZ2S1RreWRQWmpKWnp0YW1mNjZMWWVTSTJOblp5WWY1MkxVZHFydk1HQXhQWThhdmNLTmdGOGZ6ZGQ2OE9iekZKcFBKeHU1Qms0d1ZiMVNLaEVBaWtOSjU5OTEzTDErKy9NUVRuNzM5OXVXVEprM2ltRWF6cm5QdDJyVkRodzY5L1BMTGUvZnVaYzVvL01sbWZqT1JtQTRQdzNEaHdvVno1ODdsZmRWR0g4YklPOExWYnRnNXlaNlIwamx4NHNRLy9kTS94Y2Nza0JBaUNNSyt2ajQrd2I2L3Z6OEl3a3dtdzJxcWlkbElVQVZpWkI2WFNxVU5Helk4L1BCRHBnNEpKMVBEVFUrbWVqYUpHZzJ1cmEzTlBteG1kT09WS0tLQlUvbzZjUDFFQ0xYV0Z3Q3NYYnYydGRkZU8zbnlaQ2FURVFKNUI2S3hEQ0h1RGw0cUhSd2MvUDczdjMvdzRNRUhIbmhnM3J4NUhSMGRyYTJ0N0t2Z2Z2RjkvOEtGQzExZFhiLzg1Uy8zN3QzcnVoN2ZtR1ZLWjlJRmlLN1hNdEVNdDk1NmEreHBGRnpCdXI2cmdhbC9QVUhHSS9mck1pd05iMklCL3VDREcvYnMyVmtvOEg1VE5FUm9sbkQ0YkNzZDNVRHNIVG5TOVQvK3gxL2ZmUE9zZWZQbVRaczJqZGYzd2pDOGVQSGlpUk1uVHB3NFVTZ1U0dlhZYUpqTURpL1dFNDFNSUtKTUpuUFBQZmVZQ01tNDY0WUhTMHVCbGpPQitjV1pNK2VPSC8rSmRkNXN0QWd1NGp1MFhkZGhnY3l0TS9mOFlLMk5sODFteXVYU2dnVUx2dkNGSnlkT25NUnVZZHZEbEpoZGphdFkrOENmNTNJNWM4dzJ2NDduYzNWMXg1aGdzUld0RVlWWlFSdCtYbzBlSDRzSWJSNURSQXNXTExqbm5udU9Iei9PRk1nRENUVldMeGx1elJkRWJ0KytmYytlUFRObnpwdzFhMVpyYTJ0emMzTmJXeHNBWEwxNjllclZxOTNkM2NlUEgvZDlQNXZOc3ZhUjRHY1FhV2hWWHQ3YzNMeDA2VkpleWVWTFp1TDAxN2xLWVV6eEc2Nk8yc0ljRWNNd3VPT09PMWF1WFBuYWE2ODdUajQyQzZ1RVlKcUFjVHhEUHAvWFdoMDdkdnpZc1dNY0prSHhnajZ2R3pVMU5jVXh4elZEWVBWZU5KOTkzMSs5ZXZXZGQ5NlpzSG5HcEhGWlpwWG1CU29yd3N2V1Y0SDFJUTRRNTNmMWhiSW9IaHdjbURwMTZwZS8vSldGQ3hlWmszYWhqbEUyVkJkTmd1c1l1eEUvdVlFdXY0OUZoQVlZaFZERHhvMGJkdTNhMWRYVjVib3VFYS9Ta29sRk1OMFIzNXFFVXJwaEdCdy9mdnpZc1dPc1Q3SmFWYW1VZVVYZWJMcTNKUVBFMGlOV1FpSjNzKy83cTFhdG1qOS92b2ttTjJNenBtR3d4N0xlTUx1QlNNejRmRDcvMmM5Kzl2RGhEM3Q2ZWx6WDFab25ibkxyQnNTdVpnQVFRdWJ6RGtCVkYyRHlZd1V2WGxiRit0WXpmK2N6bXNJd2JHdHIrL3puUHo5bHloUVQwZ1ZqSjBJakRCbnNtREYvak9kQXRVdHRpV2RWVE1Ucml1RDcvclJwMDc3MnRhL2RmZmRkSmthL3Z0L2lOdEpZSy94eGNOMXN2UjRmTjVyRWx0ZEtxYmx6NTN6aEMwOHlBM1ljQ2RXOW1QYXFGeCt1cWhGRkdHckhjYlBaWERhYmJXcHE5cnlNVWxwcjdicVpmTDdKOHpKU09scnowY0FKOTNIMXZGZU9NdUdkbHc4OTlOQ0VDUk1zSisyWUdUbmNDSy9YV0ROQUJEN3pjK25TcFU4ODhRU3Z1QnBKYmdTWDdZcmdEN1ZXdmg4RVFjak9xbmpoSG53L01KZCsyV3VxaVVMTlZxQkhIdG04ZXZWcUFERDZLbEhOeHZZeE5nZU5wcDFBN0pzMTR4SlJKa05LS1FRSWdZNGpmYjh5YWRMRXIzM3RhNXMyYlFKclVHeG5oSlh0YUgxc040cEtieUN4MzVpUXJuaUtRQmlHNjliZDh6dS84M25teER6RUZPOURpejBveFBFUVlhaGMxd3REelVmOTh2MUxmS01Jb2dpQ1VDbXRsR2F2TWxtbkt0bmRMYUw0T1NpWHk1LzYxS2Z1dXVzdSs1aVo0YzN1V2g4QUR2R2UzOEJvTE1PeERvdzlnVXlBNG1PUFBmYjQ0NDhIUWNDYkxVMTliQmNpVmlNL1dLQWhFU2hGYkdVUkFTOUl4RnNGUkgxeHBzTEZZdkgrKys5LzhzbmZjeHpIM3RFeXloYlV0WVZIUExJTXVhQTRNRjBBQ0NMQjUvSEZsNzJnRWRRMkV4d2NMTXlaTS9zdi91TFBIM2pnQWJPREFhNkxQNDdsa3hvbjRralpqcG5WRG9XUHE0N2FOcUdwL2UvKzd2ODJPRGo0aTE4OEZ3UUJiK29qU3ZxUitJYTMyQWRBQ1daZkw4UWEyZDhSNWZOTVdybHk1Wk5QUG1rT09iZEY1VkN3YTI3WHdhNEdSS1RWT0NlclZoQlhwb0h1TjFUUjlndWk2R3oyVENienhTOStNUWlDNTU1N3ZsS3BlSjdISHRINEV6S1JYTVk3WjhKUVRYMTBmUDVxYlk5VndjeXJYUGJYcjEvL2xhOThwYjI5SFN3cXBkckl6Tm82bTZ5cXltZWRTbW1jdWdUV1ZRVlFvNDRtY2laRVZFb0hRU1dielc3YXRPbkpKMzl2L3Z5NWlNVGttdGcrUG5yWUJkbjFOQ3VyOFpCRjA4a2c0WFJJbFA0SnNnbnRPdkVCT0VxcDV1YVdQL2lETDdlMXRmL2J2LzFiYjI5dk5wc1ZnaGN0ZUU0UUFJVWhYL1JVSGZoYXA3TngwRmQ5VUt4aldqSlFPSTdVbWlxVnlvb1ZLNzd4alcvY2ZQUE5acS9BYUJRcW85M1pxeU1Ba00xbVcxcGE3R0RMdUE3VmlWN0hJOUJJeTJGV0p0RnlaWms2V0M4RjAxdHJhK3RYdnZLVlhDNzM3TFBQbHN0bGpxam01Um1vRWp5SEZBdGVmckE1U08yNElDK2J4M3BFRkdjYmhvR1VjdlBtUjc3MHBTOU5uVG8xREVOclUwOU5GeGwreE9PaXRRTFFQSWZIUkEvR2lEWHNnMWV3RUZFSXlYY3VTeWtYTGx5NGVmUG1CeDk4a005MGxsSW01TzExV2FwSkptdm5CcEhiMDJqK3laRzEwZ3V0UVlnYXkvYmo0d1pJd3ZnUkVTSGVyeFUyTnpjLytlU1QwNmRQLzlHUGZuVGl4QW5YZFlWd0FFQnJSVkdjVGJTR1FVVFdOWFFVOHlTeUdva1FPeDZZdWJKL0ZSRjkzeWVpMWF0WC85RWYvZEdDQlF2NGFCbDduRVk1WUlhdW1PcjRlcUQrL242TUZ6WWhQcVRZTkpjZktONkZyTFVtRW80elFvblV5QlVSZDU4d05LeTFibTF0L2RLWHZ0VFoyZm5Ubi83MC9QbnpHQVVybThsa0pnMmZ1MlZZQ1JxSGg2bDhyTHRHekk1M0pFNmZQdjN4eHgvL3pHYyswOTdlemxFUTBFZ0g0Nm95ZVdqcmRQTVJ1N1FlYk9qRzdFQUFnT3RLUkFpQ2tBK01uVEZqeG4zMzNmZnd3dy9QbWpVTHJCRnZXS3V4eWtNR3hzdGFFRjgvTE9LdUdlWVRpNlB4QmtqMjNONHdiL21ZaWRCTThhRUdEQkhadXBCU2J0aXdmdTdjdWM4Ly8vd3JyN3h5OVdwdkpwTnhIQmVnR3V0UUsxVW9acTY4QlNseTRYQTNtVFBVakpsUktwVW1UNTc4NktPUFB2SEVFNU1uVHpZQnlrTXB0TU0weDJ6cGlNOHZBRk1ReG1zcUVJMkgrWkFBUkJpcS92NytXUFpXdnhxbXVFU2EyZ2tkY1I4Ulh4VDMrT09QTDFteTVHYy8rOW5XclZ1dlhyMmF5V1Q0cEt5WXRXc0FvVFZUR2tqSkcvT0p1OEU0alJFRkluQTRXNmxVYW01dWZ1aWhoeDU3N0xGbHk1WXBwZjYvOXI3OE9hN2p2ck83MzVzYndPQWdRQUFrUUZJZ3hVdmdUWXFSYUZHaUxsdUtKTnBTYktrcUZVZGVPWW10U3FwMmsyejhEeVJicWRvNEZXK3F2RWtxaVVxMjVDaVdXSGJwQ2lYTDFFV0tva2hKdkVUd0VDOFFJRWpjQTh4ZzVoM2QrOE4zK2pzOTc3MFpERUNRSTJuN1V5elc0TTJiUHI5WGYvdmIzd1ozYUluMkVEVFk0RStJemxIejJWWElEQ2dPZ0RZZ05nTUM3cExKNUMyMzNQSzFyMzF0NDhhTml4WXRDbHlhQm1xd0NxdFdYK2J5UGlZaUEvM3haaVdzU0MwV1BzTnhFUHc1S1N0TVo0RnBtREN3c3NEcW9ibElyeEJjNXJyTzBxVTNmZi83VDIzWnN2bmRkOS83NUpOUEJnY0hRZTdpN2ZPVVVvZ2VwWlJTaW51MURLUjdLQlJTQjlGeEhGaEd6cHMzYiszYU5iLzd1dyt1V2JQR05FM1hoWWhlWE9nSHpGQ3h0Vlo0ak4xVU56YUVzcVVKYXdkS3FidzFPdTlxRW9JNGpwM05acUVnMVF3bU02Y2IrVzFCbGNIRGxTdFgvdkNIVDk5NTU1M3Z2Ly8rMGFOSHIxeTVrc2xrNFBBV1k0WnB3dDZ4R2pWQkZYdFlPSTVyV1JaakxCcU50clcxclYrL2ZzdVdMZXZYcjA4bWs3Q0JvVVp2WVp2UmZsUGJUeW5OWnJNUVNlOGJ6NHI0QWZSdEpCS0pSQ0xKWkgxSHg4TE96czVWcTFaMWRYWE5temNQanFwaDMvMUxlbHg0cTYydGhCbW9URWVrTnRzMHpicTZPdXhPR1RpT0E2NE5uT0pTczF3Si9KUXdEUlA2ZjZES0RNOXIrSmxJa29Mako5Rm9aT3ZXclpzMmJUNTE2dFMrZmZ1T0hEbHk0Y0tGc2JFeGtsK1BDZGhqUUhlNUxKNDdEZ2N2Szk2QUZZL0hXMXRiMTZ4WnMyM2J0cFVyVjlUVjFUaU82emkyWVJTdFp3SnBBaCtLb2tCUVNvdTNIK0ZETHBlenJKenJPb1poUnFNUnhndzBqSW5DdEhCT2tranlLbFA3dEpMYm95UmxrNFJsNWVycWFyZHV2WFhqeG8yWEx2VWVPWEwwazA4Kzd1M3RIUjBkblppWUJCR0FQS05VUVlYZ29WQ29vYUdoc2JGaHdZSUY2OWF0ditXV1d4WXVYSmhJeERrWHNQRU42U0hRcjZQS0lMVmhWTVpxcmw2OTJqUk41ZWg5NFlVeTVFZ3BkVjBuRm9zbGs4bHdPSnhNSmx0YjJ4b2JHK3JyR3lEWnVlczZyc3R6dVN5c0dBTXp4eEpsZWVhUlU2WEdYQmxKQ3QzQzEyemIyYkpsUzBmSFF0OXIvbVVlNVp4M2RIUUk2V0pBVml4Vm82OTJyKzNqK2UwMFVxU01KbFMvVWdVRFU5SXJTVE1Fd2lQeUl6czhQSHp1M0xsejU4NmRQWHYyL1Buenc4UER1Wnh0MjdabFdVQVpRZ2hDZURnY1pveEZJaEhUTkpQSjVJSUZDNVlzV2JKMDZkS2JicnFwcmEzTk5FM09YVmcrR1lZQm1vRVUwajBVdFRhd0Mrb1k0YmN5QWVib2dRTWZUazJsQ2FHaFVDZ2VqMHNlOHh5S0phWnBMbDY4dUwyOUhSNldTV2xUUmhQaVNQb1VFY1RmY3RpRFpZeUJCeldYczRhR2hpNWY3aDhjSEJvZlQ0Mk5qYWRTS1pEbzhLWnBtZzBORGNsa0VrNUl0YmEyenB2WEdJMUdDU0V5Z0liZ29Rb2NIeldPRkJ1R2V6elFBTmorVVhWVXhiVElJWk9WK2hCMzgwSFVHb2JCbU1GNW5zZWtleGFjVmZuWU45VkpvN1kyMERUelBGVDFCOC9uYUhjSkNSREJ2cEpVa3A3UkZrNUFTL3lVVUNrVHFvSW5zTnNpdnhRcHFwMFU2QWxMSTVRU3VEaHRZbUo4Ykd3OG01MUtwU1pHUjBmVDZmVDRlQXAyRndraHRiVTF0YlcxZFhYSnVycmFXQ3hlVjFlYlRDWU5Jd1FwNjBUK3lBbFRTYWNVaWNNSHREYXhuZWlZUmtrcEJKRzBNb09COWdXTEIrdmhRQ1pVUnhpQUc0YmdJcGJURHdxY0VFSVpvNnJQRU9RWFhva0JJWUVndkpSYUNzRXJzZzFGQ3lHUkQzYkpqd0M2eXRSSlYyZThQQU40cElua0g2QURBZXRCU2lraERDOEdKVVU3V0FJU0M4aHlLS1dGK1lWK3FQUHVhUXpOZTZTQXdYQ0pRUWhCV3gzZjRXUjZKaVJDRUJuTzdoVUUrSXIvMTNLeUNwNUNITks1WVVLUEFsRUh1cmd6MU5OaUlRU0lIMmdUdUw5ZzZVSUk0ZHlSN0Vxa0I0SlJ5ampQNTNxUWswY3BKVEk4VlJEbGxMcG5KRlQxZ2t4SXFjRFRHTkxmQ0FRS013VCtTVUVLRzF6d1hlRUR0b0VRaHZxSEZDZXRLaDZINlptUUtHcEs1TjBBTGlFQ0xwY2xSRkRLMEVFcXg3WVFZUnc0ZC81bXFOOXk1UVpsSXBXVmJGRitvMVZsUldXaVM2N0VWSlhPaTdJd1FhZUU0N2pnM1NFa2YvVjNKcFBKNVhKWU1oajUwV2c0SEE3WDF0WXlaaElpWE5lQmt4eVVRbG9UaXM1ZWp3aVc0OGxCR0FVeFRMNHJwYithUzZpNUVvbVMybE9kbEdzOXlvVGhLVERFY3Vrc3BDMUtmWG1XQ21RQjdqSE9CZWRVWGpxSHpFbmhrQXNoRUJMSkZLYk5BMktEc1dOZ3o2akVvZlpUNVViSGNSbGpocEZQeHFFU2xtM2JjTEtHRm1VQjVGUzZpRWcrKzB0K2M4SXc4SnJsb2dzVlZUNHNMK2JVNXFFbEx5TWNUTXV5SUU2R01kZ2hFSGlhR2Rlb2F0YzhIUzltdjZLM2hGelc1bkk1U3Fuak9KUVd5cVNVUlNLUlFLa1JVRmJRYzdVN1F1UzFYemdjRG9mTlZDclYzOTkvN3R5NVM1Y3VYYmx5WldSa1pHSmlBazdpZ3ppTFJxTU5EY21HaG9iNTgrYzNOODlmdEdoUlcxdGJmWDI5UEpHVFAyYWxxcGZpTmhCQ3FHMDdwMDZkbVp5Y1VIVkdLcFhLNVN6SXRNOUxwNnYyREthUTVpc2hKSlBKWkRKVG1DWkw3YlVpcWdxcjFrMmJOcTFZc1VLZEkvL1FYZE0rSWRBOVJyM1l0Z01xUmRHZkFkcEFXajdvZ0NGRTZoRGJ0aWNuSjVYSTdNSVBmWlVMcWNSRU9CeHVhbXBTclMvdnE4WEdBTXowNk9qb3lNaElLcFhLWkRLVGs1TndlK25rNU9UVTFKVGFXaXJYUzdGWXJMNitQcGxNTmpZMk5qYzNOelUxUmFOUjJDVUhONk95blZob3MycEtsQmxKVmFXUGpZM3QzYnMzazhuWXRqMDJOb1k3b3ZQbXpYdmdnUWVhbTV2UjhpeWxYVDJObDRWVG9vVFJRNmRTcWRTenp6N2IyOXNiaThVZ3VBeUVUa3RMeTNlKzg1MzI5dlpBOWc0cW5IZyt5RVZYWGlWQ0ZQNjVjK2NPSFRwMDhPREJNMmZPZ0E2VStncGI1UnFHQ2NzTlFnVG5JaHFOSnBQSmxwYVd0V3ZYYnRpd1lkV3FWYlcxdFZoK2lUdnJCWXpZQ3kvOHh3Y2ZmQkNQeC9HMEtxcmNNdE1SYUV5aGVBWC9QQy9LZ0VpSjF3QWtLdG1zV3JVSzlzOUs4ZnpzbVJCRzRmVHAwNis4OGdyY2JaYk5ab0VjU1drNzI4TmFuajlkMTAybFVxcUlVZzBoVHdPRUVLWnA1bks1eFlzWC8vRWYvM0ZMUzB0Z09uQVUrWXl4ZERyOTNudnZuVGh4SXBWS0RROFBqNCtQcDlQcGREb05aMzg4amdjY2VuUWVDQ0ZDb1ZCOWZYMWpZMk43ZTN0WFYxZDNkL2VpUll2cTYrdXB6S3JpYVlDSFh2M0RpRjlSZVM1NWJHenMrZWVmdjNUcEVoeklJb1NZcHBuSlpKWXZYMzdISFhjME56ZXJ0QjVJVDVVSWVQaVZiZHNIRGh3NGNlSkVNcG0wYlVjSVlwck1jWnlPam82SEgzNllLdHMyZ1ZEN3BZb2I2QTZtaEF1SHczMTlmYi81elcvZWZ2dnQzdDdleWNsSnpMNEh4cnl5T2NRZ0VBcE85d0dHaG9ZR0JnWk9uRGp4NXB0dnJsNjkrckhISHV2dTdpNXZhM0I1NGVINCtEZ0VKNkFaeFlMeVozdjY1SCtLUmp2c3JrMDd3dEFxNkdENU44azFtcU9Nc2F0WHI3NysrdXVwVkFvU1ZjeU9JRWl4UXNkTloxWHVCcmZlTkxQWkxPY2N1Q2lRVVZWdE5qNCsvdEpMTHgwOWVoUmM4M2dqSW9Bb0pqc3A1bitrTTlkMWg0YUdMbCsrZlB6NDhUMTc5alEwTkt4ZnYzN2J0bTNyMXExcmFtcnlaSy95YTR3ZzI2bElWUUk1WXF1aTBTalFFNXhBVldXVFN2cVZqTENuUnZ3UWlVUnFhbXBrSEFXWUNYWTBHc1gxN2JSRmVUcExKTWxpanQwUFB2amd1ZWVlTzNyMHFCQWtHbzNFWWpHNHJ4STZpNnNtc0xmbEFpZS95R2VNaHNOaHNNOUhSMGQvKzl2ZnJsdTNidlhxMWVvK2diK2RLRHJsK2hNTzRsQzF0YXJEczdoUHhGT1UyaU9nQWY5UUJEWUFSeUNvb2dKbXc0VFFTc05nc0JOVlUxUGpPQzRjSUN5bEFOWGZ5b0hEeFhyUis1UlNDRzJqWlhQREVMbXY2RGhPSkJMeFY0YzBnUkVZUkdydlNDU0srVzF4Z2VkeEhxTCs5TXdjMEFvY2V1U2NqNHlNN042OWU5KytmZDNkM1R0Mzd0eXlaVXY1N3BlR0lLVElLSUEvSGNlRlVRV1NMWDRoL3lHd3JrRCtLWDRpSUVrVWxDeGsyaEVobUczREUzRGJpRkpkOFZBckNoR1NsMVlPWTh4eG5KZGUydlhDQ3k5QXVBL24zTFp0U2czSGNXRnFpQ0prSVRBUS9rZFhBaEE5c0p4dDIyMXRiYXRXclFxRlF1akVLbUg3Z0YrVUNFRmNsd3VSOThBaFIxRUpmeGVrSDVWeDd1SkVnRmNNUldRbDYwbTB4a2x4aEwxZnFjeU1DU1V0RWlFSTU2NWhNTmQxd0l4eFhlNjZoYlR6U01xK01paHVUNUVpcVV6UXFRUE5ucll4dU9wQUhlaWZEOVNCbmtsQ0x6a0V5c0cyQkpWV3E4cHkyRWlRYXNpMEdFOFhpVVJ5dWR6ZXZYdFBuejc5MkdPUFBmVFFRM1YxZFNyM2x0Y24waDlMRFlPQnRCYjVESFFFU01lL2x2QU5YVWt2WmFsNmdmekEzU1ZkWWx5bXhDNE9taWdOZGFoVmFxT1VPbzdGR0xPczNMUFAvdXpGRjErMGJRZFNwOHVmd0tZeGNWMEhvbi9oOURZaHNBMWpnMEVCZGdxUjBoYTZzMnpaTXRpVkxkOUszRlNnTkIrOEJXa3BsUEREWVBOS0NFS3B3Ym5MV0Q0TG8zVEpna2NkcE5VMHEwcWlhRnBvZHZuOS9aa3hvYWR1V0ZYREVNRnhUS1V6SlZXaUVBSXNmaldRRDAxbnhpQ2Q0ZlFYdVJCcG9PTzZ3bGRMeVg0UTZUUkhFV0JaQlMrNVN2Y291ckxackJBQzdEUW1yOHFBRGdJTmpZeU0vT3huUDV1YW12ck9kNzRUajhlSjNISlFiUkkvY0VzbWNDbmliWGZaVldYZ3kyVzRVZHJBNnB5cUhqOUN5c1lvcTRhMGtPdEF3ekFnSlFMbi9QWFhYMy9wcFYxZ0pXRzRKaXdFY3Jrc3BiU3hzYUc5dmIybHBhVyt2aDdTb2xKS3M5bHNLcFVhSHg4ZkhCd2NHQmlBRlBSZ3dZYkQ0ZTd1N3ZyNmVzNEw5MVdVR0pOOEMyM2J0cXljNDNCQ2hCb3RvQW95aFZieitiVU1neW5zU2tqK1FraUhFQkdQeDJPeDJMU3lGVG9iRG9jaFJnTG5JckRObFRKaENkYUhqUVRPT1hjY0M3MHlwS0RadlllSmhCQkNjRWoyZzV0UmtpR3BES2wxS2ZWR1YzaUFQWUZkSnBoZE5XTlhXVm1GU3pETU1zUVdMbHpZMU5UVTN0NmVTQ1RxNit2VmEwWWR4eGtaR2JseTVjckF3TURRME5EbzZDanNoaU1KQXJORkloSExzbDU0NFlWWUxQYjQ0NDlEcHpEMmxjeHdlVHlMcjhyWXBYN3JBSFFGY0k1L1F4bCtXa2xyc1FxVklSbGpIMzc0NGM5Ly9weHQyekFzWUxhQTVaTE5aaGN2WG56YmJiZXRYYnQyMmJKbHpjM05LbldDRVRzK1B0N1gxM2Z4NHNXVEozdU9IVHZXMTljL09UbXhZTUdDdFd1N29STmwyZ00yWkNnVXV2ZmVlNWN2WHhFS2hVaitVbWNLUzJzaE4rNzg0K202N3U3ZHU0OGRPd1lMRnM0NUljeDEzZnI2NUwzMzN0UFoyUWxMNkVxbUVzYWtzN1BUN3kvMFRGYWxzYU4rNDRjeGt6RWpGQXExdHJiR1lyRndPRlJUVXd0Umhhb2E4WlFHRzlDdXk4K2NPUU1uREhHVGpYT252cjVoN2RwdUdMWHlGN2tnV1Z1VzFkSFJBZkttRWw5Q2NXUHlHVmJhMnhmKzJaLzkyVTAzM1JRT2h5T1JTRGdjZ2doeXpHK2R5K1hTNlhRbU0zWHg0b1ZQUC8xMDM3NjlGeS8yTXNaQ29SRHVsQUtkT1k3ei9QUFB0N1MwM0gvLy9iaVF3emtJMGxlRnBXOUJOc3djWlN4UFVuSkc4Z0xVWTBUTUZDZ3VvWERUTkFjSHIrN2E5YXVCZ1N1MXRiV3U2d3FCaHhnZEljUUREM3pqMFVlLzFkVzFMQndPdzNWUktvM0NMbGQ5ZlgxVFU5T2FOV3Z1dm52SDBORGdpUk1uWG5ubGxmcjYrczdPem1sYkM5YWpZUmgzM2JWRFBXbnBNVjhEcDhOeG5DTkhqaHcrZkpneEpxK2dFNVFLU3NtV0xWc2dFZGEwM2dwc0JwSHJGN1U2UC9OUHJ3bjlISWhGUUtiS0gvM29SL0tlM1FnRVVzdSsrY1UvaGEzd1M1ZjYvdnF2LzJaNGVEZ2Nqa2d2RnN0azdMYTJ0ai84d3o5c2Ftb2twRWdUK3Zzc0xZZThTeE4ybHFjZm1PSit3UWZYZGVQeGVFZkhnc2JHQnNleEtTVzJiWnVtdXFvV3BzbVN5ZHI2K21SSFIvdW1UUnZ1dVdmSEcyKzg4ZWFiYjQ2TndXMWVRZ2hPcVFFV1NEcWQzclZyVjNkM04rU1RMeVYwMWI0QWtWVGU1bXNIbGF0bHZHM09wN0h6Um52NUVwQXdWT3QwLy80UGp4dzVnbWVSS1lYN1pCM1RETzNjK2NnVFR6emUxTlNZeTFtdzM4a1lrd3RqTEpOUVNod0hsb3VzcmEydG82T2p1N3NiN0ZLd3BQenlYZjJUTVNZRUkwVFl0aVh6RkJLU1Q3Y0RhaEEyS3Jqc0tjcDAyN1lkS3RPSUFjVkNnYlp0UXl3SFZSTEFsNEdRcVFZOXpPOUhSVWVaOERQMkZvY2drVWdzVzdaTWVWMWxWOXpLeklNUzRuTFkzM2ROMHlBRUhWL2c5cVdHWVNRU2lYZzhMdE9ReUI4R2RRR2FBNVNrNUxjTTdvWG5NL3lIa3NsMVhkdDJETU53SERoYlVCVEZUL04zanhIT1JTNW5NY2FXTDErK2ZQbnltMisrK2QvKzdkLzcreTlISWxId1lRckJYZGNOaFVJOVBUMGZmTER2bTkvOEpvekpkSU9jWDZEaUNPTmVGdndVM2NpcVBWTyt6TExWRlFZS3RzTDlmQ2o5Tk9XMlFGU3VVMWx4Ykd6cy9mZmZ6MlF5MFdqVXNteDUyUnNSZ216ZnZ2MFAvdUFQYW1yaWxnVTUzUXFTRmhialVERDhENVl5ZU4wc3kycHJheWVFeU92c2kwakNJd2pnVDhNd1lSMUlDSEFzcFJSM1RlRG4xRE9XbEJLNEw1SEtPNlE1NTZZSlNTSHloNEFKS1I4TnA0NVBmamttQ3I1Zm9nNFhZbnB6dE14REtsMTUwQk1wOHZOZitoc3FDQkdDY2s3Z0FBVEpoeWxCTkpZaFc1bm5MbFVUbHFDRGd2U2R6bGRXNEFUcEIvSktmYmxMbGoreHFoWUZSeU9FRUl3UjBIc3dLMS8vK2dPaFVQZ25QL2svWTJQamhtRVM0Z29oSE1lQmMzSHZ2Ly8rdG0yM056YzNjKzVXNG1mQ0ZvWkNvVVFpUWFWelhBaUJkN01nSzE2N1NrUUI1SWswZ3JHQ2xiYnNkZEhlYWFCV2gxL0JHcmkzdC9ma3laUHl0VHo5T1k3ZDBkSHg2S09QSnBOSjI0YnJEQXhWb2NrTzVoMVU4cmNVRnE1QzNvdEVxU0hib1A2cVVFaXhQa2RDOWZTZElGdENSZkpYNnA0blZPSDF2WU5NcWVUU3kwQXg0ZmtBcU9pc0FCb2VRVXNhMmJZS0hOdFVnZWNyZFJ3OVJmay8rRXZ6eUFWL3ZWQUY1RFhGbFo3bkJVOTdWS2dQU1NGYTFibmpqanQyN3R6Sk9VZVpZaGdNK1BEczJiTVhMMTRnUWJaMG1jRVJRc0NGTmlqdnBld2t1VnhPZFgzTkxYQ0l3UGVieldadDJ5NGo3N0cxbmcrRWtKTW5UNDZQajRObkM3ZlVPSGMzYmRwMDAwMDMyYlpEQ21vaGI0TFNRcmhDUWVHakdDcmZCblhxRlE3MHpxQUhuc0pWbWxHVUpKRkYrU21rZlBIZXV0UVB4RWR2RlRHaFdsRGdLRnlqWUE1aW0ybGVJRDRtVk50UVNsaEE4cGpBTmdUK3BFeWxqREZ3TU41enp6MDMzM3p6MU5TVVlrTUswelN2WGgzOC9QTnpvckw4YS9LMS9GUXhSbVg4Sk5JV1NhZlRvSjJ1SDNDY3VlOXVTZitiS2xVUnVVUElPZS90N1oyYW1zS3Rhc2FvNDdqeGVHTDE2dFdSU0VUdWdNTVU1NVdQbnpRREdjd3pJeXFWcS9SSktVVk5VNnlPQ3YvN0tMbm9ML2tDbEZLS3V2Tzk4UC96RktpMEt0aUVxVlFxbC9YNkFBQWdBRWxFUVZRVDRrQjRIZ2IrNldlUG1YSnBlYXFsUHVXT3p6MlVJWXJYdEhML042QjB2M3dKRkZvSVdDRTRqdHZhMnJwKy9Yb3dVK1ZQOHp1emZYMzlqdU15Rmx4amNYWDVwb0l4RE9ZdXRnRys4bHpsTllkUWExR3NMMUxoTGdYK1hBZ0IwZkM0MFNxRU1BekRkWjI2dXJyVzFsWVpJSmkzL1FJSFdTMk5WRVptL2orUllGVmlWSi80dW9BZjh2Zk1lVW9PN0xqVW1kNS9ubnFWVnBXZ3BXbUgyRmR4d2Zid294U3ZWMTY0cDdubFMvUE1VNkRDeEs5RTBCMXNhdFhUUHZUd1BDR0Mwdnl0WmpVMU5YaXpweEJVQ0dvWXh0RFFFQndVS3RNRlQxKzR6TmVyQ2k2cFVzb2xCYnNXNEpnckg3ekdTT0JQUERBTVkycHFDcGpRSS81Z29Tc1pES2lJaTBJTVk1R3A1cUhkNjRGU3ZBMFoySkQ2U0o1eTh2M0E5K0hKTlhqSGlqRDcrd25MbUw4ekxUTHdLVTVQcVFJREcrQXZSSDFZWmxJRGEvRWJFb3FjSm9SUUlRam5mTUdDOWxnc2lnWWtzaE1jUnlyZGNYOS9WYUZPVkpvc0wwR3VFVGgwNmlTVzN6WHhqeXEwRTRMcGhSS0xDMXQybHBXREZKSm9LU2grRVcreEtnZE9POFd6N2pJdHRwamdmeG5qUXFXN3U5Qk9aY2xBcHRNT004TnNOQ0VwWVhCNmxGaUY4SXlxWjNiTFNNUlNEU2pWN0RLRGg1VUdDc2dTVFNLRUVNWW81MjRzRmtzbTZ5aWxrSzVmdlpKeGhrU2pzanIxR0lTekh1SHBhNVdHTkNFTWppK29sU0puVWtWcmtXTFpCTTg1NTlGb3RLYW1wdmk0bldETVNLVW1MbCsrREhJRTc2YVhWUlJWUjRvbGIrVlRQT3UrWTdGd290STBReEQ4clE0KzVCQ1JZeVg4NHVOYU1EZDNVVnc3MVBGVlZyZEZFTW9TdkpRVW9FRW04VFhPWEdDbCtDMWpET0pzTUdDWEVDS1BJQVFlbGlsZjF6UXRtVjBYcHFzVWlpMDRJVHoxbEpkY1JIbzdnUW5oZkxDUzVZQXlSaWNtSm5wNmV1QmNIeW1XdktoaFNrMTNKVk44elgyZkJwWmxqWTJONFhIcXViVkl2aWhNR0loQVcxZVV0WWZGTEUzaTZWdmlxUlMvNHB6YnRwWEpaR2hlUCtTVFJuUE9JNUVJN29OWFhOSGNOdnc2Z2lxS0VjMjVTQ1RTMnRvSzhXZ2tyeTN6Q1RzT0hEZ0F1ZGhoUjBlVlVJRnpXbWFXNTNDS3B5MEhxM05kVjI0U1VrTG1UQXFRTHpnVEVwOUY2dmtRQ0RLbkdnTlpUclZiMUc4cHBlUGo0K1BqNDlJYlVUaFQxOXJhR28xR3I5L21YbldCNUN1VXZWTkN5TktsUzhFaWxYczIrYlZXWDkrbFgvN3lseE1URTRhOEhGc0lieUdCNVg5QllCZ0dwVVFlZHAxTFFWODFKcnh1ZnErNWhNY2lRb2FraXVYTUdEdDM3bHdtazVFQlNuaFdsYlMydHBiSmZQTVZnS3JIQUs3cndwRS9UTndrUTZpNVlaanZ2ZmZlYzg4OUJ6ZFBRQ2gvR1dGYUJuTm9qbGJZUjRCbmkyaXVtbEFkSmhUeWJyY3ZockFyRlRsUllEeTBncERzaEJDRUNNTXcwK24wb1VPSEpCTVM4S3E1cnR2UTBMaDA2ZElaSGV6NHNvTlN5am1mUDMvKzFxMWJJV0pHeUNQMnJwdlB5L1RpaXkvKzlLYy83ZS92TjgwUWxadWZwY3pPRzJDT1ZnNmhITStWYlppYmtxdW1DVUZwa0NxcFJGcmtuaVkwS0VJYXR3VHdzQStTQytjY1lyNEpZWjk5OXRrbm4zekNtQUdEU1NrbGhEdU9zM3o1OHE2dXJtazMzTDRDOEN3UUdHTjMzbmxuVjFlWFpWbW1hYUlKQjZObjIvYkxMNy84TjMvenYzYnZmaU9WR29NMDJMYWRjeHpiY1d6WGRZUndIY2ZtM0JIQzVSeXlleFI1QjY1clh6d1NzMFIxY3p5ajFUUkgxUzNSS2paRGJRTk9nSkRwKzRsaWRDRUhFaGtMTWp3OC9OcHJyNCtNaklSQ1lGOUI0Q3NoUkd6YnRxMnBxZEZ4N1BLbms3KzhvSW9Ea3lpc3lEbnY2dXA2NUpGSElwR0lUQWFiVDVjcVpGVFFvVU1mLzkzZi9lOS8rSWVmSERqd1lTYVRDWWVqMHM2SGRDeEZad3NwOWJvR2JrenZQQitVcithNHJxcXRXS3ByaUNwaFN2azVSaWM3bFJIa25tTWNRc21sQ1NIYWxtVzk5TkpMZS9ic2daZzFJQjNHV0RhYjYrN3UzcnAxSzJPRzZ6cW15YjRZVnZjY3cyTVdvZzZCZ2JyLy92c0hCZ2FlZSs2NWNEZ01tWXVKc3BOUlUxTmoyODRiYi96bXdJR1B1cnU3NzdqamprMmJOalUyTmpKR3dFQkZNeDRYQlZYczZmVkdGWmhRaXN3Ylg3TVhVc2hSMTNYUWtZQm5jRVZ4aGlqNEFIZkhNc2F1WExueXExLzlhdGV1WFVJSTB6UXdNaWFYeXpVMU5UMysrT010TFMyTzR4aUdLYzNkS25kNXpwZW1xcTVRalhsWTZVV2owY2NmZjN4c2JPeTExMTZEUEVDUUJJUktkeitsTkJxTlRFeE12UFBPTzRjT0hlcnE2bHEvZnYzNjlldVhMbDFhVjFmTEdJUHpGcDVOYzdVWE9EWEkvRi9TdFhjVm1GQk9XSFY5MEVVbnU5THBEQ1FkRmpJN09yUU5jd0hqelRPR1lhVFQ2V1BIanUzYXRXdmZ2bjFDMEhnOEJrbWlJTGRGT0J4KzdMSEhici85ZHM3aGR1dkNHY3NxOHVFTmMyYkFxRUphMGJxNnV1OS8vL3VKUk9MbGwxL09ack9RT3hSU0RSQnB1RUtxcm13MisrbW5ueDQrZlBpMTExN3I3dTdlc1dQSDZ0V3JtNXFhaE13R1ZyNUdFYlI3OUNWQ3RjeFJqN09yU3ExUXFCUDBHeVJYVm1VdGZIWWNaMnBxYW5SMDlPelpzL3YyN1R0dzRNRG82R2drRWhHQzJMWkw1VTJNaG1FODhjUVRPM2Z1bERxQktlcGlGaGI0M0l3TDloSGxqditGR1JWVjZpdDhBY0E1cjYrdmYvTEpKOXZhMnY3elAvK3p0N2MzR28zaXBkbVlEQUcyTWVENTJOalluajE3UHZyb294VXJWbXpidGcwempxT09WWnVxZHNmVHh5OFhxcUlKdVdHWWlVUXQ1MWNnWkErMElwNGY0Vnd3TnBjeUc2Y1FuNkRCQ1VTUXkrWGVlKys5M3Q3ZWJEWXJtVER2Zzg3bGN0bHNiblIwOU5LbFMvMzlmVmV2WHAyWW1EQU1NeHdPdzRhRVlUQkNqRnd1bDBna3Z2M3QzM3Y4OGNlajBSaG1KU1h5OXA5U2FsQWxLa0lLclJKQ2xBcHRueEdwcWRTSjlBcUZxK1JMQ0pHNVhxRzFCVEdrNW5FcXMwTHpOQWtTU1hET0U0bkV0NzcxclJVclZ1emF0UXZ1MkRCTkUrSm1nQS94SUNKanpEQkMwV2hvYW1wcS8vNFBEaDgrL000Nzczejk2L2ZmZGRlZDRYQUUzS1F5V1VhUksxdmROcWh3V0w1UXVQRk1LQWdob1ZBNGthaVJqc1JDSEl4bFdUS3o4blVmVGFSTHh0ajQrTmp6eno4dlo1RzZyaVBUemxMSGNZVVFoRERIY1NDL0NFVFp3NUUvUWlDbE5GMnhZc1czdi8xN1gvdmFObkQwWWVTa3RFV1JFN3pOa0RSZHRLcVpWalZWYmx0NjNsU1d1RVRsZVpWUlBTVHUrU0VXcTVhdlVyLzZKMlpuaFV1Q04yL2UvTlpiYngwN2RteDhmRHdjRGtNU1JHQkZ1REVHb29zb0pTRElEaHc0Y09yVXljT0hQLzNXdDc2MWRPbFMxVHFsTWpTWEZWOVUrR1hrd3h2TmhFaVJNRlo0OWdmR2NXSmlJcHZOWFNjRE5aQzI1TXd4dUM0TCtDY1VNZ21oY0VWaEpHTENyNkxSc0dKQmMwSWdGb1EwTkRUY2RkZGREejMwMEtKRm5hN3JRRzR2VXJ3TUswTVpIdnNLRGJtNUlpWVBhMUVLV2s2Z2ltYks3VGM0SGJMTkpmbGNsUmVsSklLUTRXeENDTWR4YW1wcUhuamdnUzFidHV6ZHUvZWRkOTQ1ZWZMa3lNZ0lwVFFTaVVCV0hzTXdISWRUS2pDdUxaRkk1SExXeXkrL2V1Yk0yU2VmZkhMcjFxMXdneVVrZ0lLTXo5T084QmNmTjVvSkpmdDVWNE13bEpoU3JzejB6dzZxalBRVERFd25rNW53MVRlVmVBNnVocXdLUVV6VHZPKytyei84OE1OTGxpeUJ4dU1oSmlUS1NvakRyNnprR0JGQ3Jta28vTVdpRUlTUzRTb1JXdGpvUThWWWlLWW8xV2IxUXlrRmp0L0NDRHVPVTE5Zi84Z2pqMnpmdnIybnArZmd3WU9mZlBMSnVYUG5VcWxVTkJwampKaG0vb1k4dkhUQU1NeFlMSDdpeEltLy9kdS9mZXFwcHg1NjZFRU1IWU5OeUFvdGdpOHlxclZGUWFsdkl3NTM1NjYzVlBNWHp6bVg4VEI1V3VRY3prTnd6dk9wM0Z4WG9DRUU4KzQ0enBrelp6NysrT09hbXByNTgrZHpEdTYrRUNrbVRjQzBscEpxSHVOOU5mNTNadGpUUUIyVjN5SVNnbUpTS1kvVUVJSmtzOWtaMVlYVkJkcTBWTW5qQ0k3VHJWdTNybDI3ZG1obzhOaXhZNUNuOU9yVnE0UVFQSG9Da1c1UVFEeWVHQjBkL2FkLytyK01rUWNlZUJDM2M0VU1hY0tNNlY5R1ZHRk5LSlNrQnFXV0g5ZVBEejBMVGtrMDNIVUwyYktoWFdCVnVxN0x1VEJOTXhUSzM4UWsyMHc1NThlT0hmdnNzODgrL3ZqajczNzN1NnRXclhJY3k5dFZwZDd5L2FJeUhpQVNpZFRWMVFYNjVXYzZMSUYwU1pXRWYwUlpVNkZSeXJsd1hYZHljaEl2Zko5ZGRaN2Y4dUw3MGl6TE1nelcyanEvdFhYK0hYZmMwZE56NHUyMzMvN2dndy83K3ZwTTB3aUZ3b1poQ29GUmF6UVdpMDlNVFA3N3YvOWJjM1BMbGkyM3drNGoyQys0czMvdGZGZ1ZzN1k2V3hTZ0o2VGxVN1QzS2lsMWpzY0Nhb2xFSXJGWVRBZ1hGa1dTNXR4SUpIemJiZHZoRWx4OEh5aDFmSHg4ZUhoa2FHaDRjUEJxS3BWM0p3aDVmV0k0SENGRXZQdnV1Nk9qbzMvNnAwK3ZYcjNhRSsweDdZb0ZtUk9pNUVBVFNya3VwT3M0ZjQ4MGFDZFI3RkhFMFF1c0JmV1NhbU5qNzRUaWxGYWF5Z2toc0ZjK2kzSEdjanp0QVdlVkVqb2pzUFpZTExaeDQ2YTFhOWZ0MkhIczFWZGYzYnQzYnlvMUVZOG5ITWZoSEs1dDVwYmxoc1Bod2NHaFo1NTVwclcxcmJPekU1YVIvb3BtQWVSZS9JRGJ4ZXJKQ1pnTFpRRG5CamVlQ2FsVWhzb2paWUZ4blVRUmpGbzBHb1ZyTnlGeUZaa3dtVXp1M1BuTjFhdFh3N1hHNms4c3k3SXNhMkppb3ErdmIvLysvZSsrKys3SXlFZzBHb01vYlVxSmFScnhlUHo0OGVNLytjbi8rYXUvK3A5ZFhVdGhGZWxaTlpXQzN6R2pmQVhiL2ZsWjU1eVhNUkVyR1RkWWhFczFDSjRuV3V5WUtVVEd5c2JNellxVStIYlZZYlBCTVBLK09zNEZZd1pFekd6ZHV2WG5QMy8rNU1sVE5UVnhsd3A1V1FWeFhUY1VpaHcvL3RtZVBYdSsrOTN2a29JaE13ZW1FNVZRNWFadkVvWDZZYTc0OEtzWlcxd0tIcDJnUHFlVWhrSWh3ekJDRXJDREhJL0hHeHNibHl4WnNtM2J0aC84NEFjLyt0R1BObTNhTkRXVklVVEEvaklvejJnMGV2TGtxUmRmZkNtZHpzd29ZaHN0YzF4d3FxeUlwS0NHa3VPM2FtN3NTZ2dDVjdORTdsdEtuaXlVakh3U2o4ZElrQk5ydXZLOVNVRDh4SzJxSGFudzg3QXNLeGFMN2RpeDR5Lys0bjlzMkxBK081VVZ4WWwzNFNmNzl1M3I3KzlIcjh6Y0NtNVJmR2xmY1ZQemdteHU4UlZuUXY4a2xSSmd5QXlrbU1wcC9xWUsyN0tzVU1pNDdiYmIvdkl2LzNMNzl1MjJiVkZLSUZjNCtnbCsrOXM5Ky9mdlI1VlN1YVJFb3hGUW5LN0dhOTM1MXo5bHFOQmpHQ3QxY1VxcGJkdXBWQXJ0WVNLWGlJeXh1cnE2bWZwbWhlS1ZVYlVyZmtXQzFLUENzY0l3cUJEY3NxeGJicm5sei8vOHY5KzhmRmt1bHpWTlRDcVJ2L1N2dDdmMzRNR0RHQTh3Vnd0Q2FGNGtFc0h0VGF3WGc0cHhGVE9INXVoWG1Razlla1A5eHY4bUVBM2VDMDhWNXkxZVJTcUVzS3pzZ2dYdGYvUkhmN1JtelJyYnRtQ3BCczUzMHpRem1jenUzYnVIaDRjOTl6ZVEwcHJLc3hvQkJnRHk4c3NPTkVkVmNxK1FJRHg4U0FnVmd0aTJrOGxrMEdXaVpEMGxNdHhuQnZDb1BuWDgxYTg4N3lPa0xVQk0wN0FzYThtU0pVODk5VlJMU3d0Y3dxTXlReXFWT25Ma0NPWjBuU2svbEg4L21VeUd3K0ZpeTVrSmdWWXhPaXptVENGK2xablFJNE1SZ1dwRHBSdFZIU2xha1VKa2FTNlhYYlNvODl2Zi9uWXlXV2RaV2JncFdBamhPRTRvRkRwKy9QaXhZOGZ3V2p5d1lrcUxnd0JPQzRWQ2RYVjFxamFHTGppT2d3bS9QRVpkS1UySXo5VUdvQkVJdmNRRS9qZ0lRb2hFb2diaXJhOHJQTXlnbUxJRStydGh3NGF0VzdkQ0dJMHFRU2lsbHk1ZEdod2N4RmtyTXdoK2xIbVRVb29DRjhtQXl2dURTYkU1T2xkMjZWZVpDY3NhYVo0L0N6NHhJUU5LY1pGR0ZKOHRYRERzT002dHQ5NjZZY01HTURubFJqK2oxQmdmVCszZnZ4OUNzV1JnaXRmejVxbWFLa3NwTUljYUdobzhQd0hUY1dob0NNNU1pY29jRXFyQzlIL0ZHSjJhbWhvYkc4TzhBZEJsMjdhVHlXUWlrU0J6bWxPc0VsQks0Vlk4eUdVZURvYzNiTmhRVzFzcjhzRTNoaEQ1UGZyaDRXR3dPR1NPVUZLNTNpNXJsUWcxRFQ0S0w4ZHg0TDUwcVFEekRyTTV3VmVaQ1FGQjFocVYvL0l2cUJvRG9acEE4SUFRSmdRMURKTVFHb3ZGN3IzM3Z2cjZCaUVJNkQxY0F4NC9mcnl2cjg4d21IUnZWalJYS2tjbGswa29VeFVCdG0xZnZud1o4bHNYbEd4bFVOOVVkZXo0K0xpcUNZVThRdG5VMUJTUHg0VnlUUTFSOUdTRmxVNExuNFhDQ0lHRWtRenYrZXJxNm1wdWJvWURVT0RPaFoyVmREb05hU2JsaHRQTWhBVlZqSG1sSlREZDFQK21zaVpVdjVwTnIvMzQ2alBoN09BaE8vbC9nVzRjeDFtMWF0WFNwVXV6MmF4eUFFcVlwams4UFB6Wlo1OHBkNk5qYVpYV1hsdGJtMGdrMUpPTlVQN1EwTkRrNUNSbWNMdVd4QmxDQ0VKWVgxOWZPcDBPaDhORWtWYWNjN2dDWGQ1TDQrZVdhNkkrVmZPckNxZTRlWGx6T1I2UHd6MGZlSDRDWHJZc1N5cHdRdVE1bFM4cE5CT1dnMS9ib0Z3a2hOVFUxS3hjdVZKSVJ5aVZ1K2NURXhPblRwMGlSR0RpVGFuUUFxcFFyVXJjNkc5cWFtcHNiQVNiRm5VVWVBVXZYNzVNQ0lHekp0ZWlsQ2lsam1OZnVIQUJUbS9KNHdzVXppVkRBbC9PbmNCbVg2TXlWSTNrRWlvOXYrNkNYamMyTnVJOWg0UVFJUXBSdm1UdTFGRVZvWmx3R3FoQ0dnMFk4STZFdytGbHk1WTFOamFDbTVRUXdoZ3pUY04xM2ZQbno0K01qS3BoL3FXZ3J2cmdmOWQxMjlyYW1wcWFZQWNTRkFVY1FoOGFHcnB3NFFKSWdlSkE4MExjbWNxM1plcGxqSTJOalo0OWUxYU5UMERoMHRuWmFab2hLTUJQNVdna2V5b3RoVEp0SzZVR0VlQjVGZ0pUUlJHNGJoNGN5Q1F2eGZpWG1oV3J3NFE0WkhPNHdKaFIvYlA1aldLYTRqWnhaMmRuYlcydDYzTElaUVEweGhpN2RPblN3TUFBV0ZDTXFWdmt3YlFJSDlDbkdvL0hPem82REFPU0NCZDU0WThkTzViSlpOU3pyZFFIVW5wZzhWdkRNUHI3TC9mMDlFUWlFYUVzUjIzYmJteHNYTEJnQVNIQ01GaVpzVkt0U3FJSUVUODhyM25hcVg2cmpqTjh0aXhyWkdRRUJndzd4VG1QeFdMeGVMeEs5RFBIcUE0VG9ucndVTXlOR2RMWnpaeklPK2lZU2tEMTlmVmRYVjJFRUNHNGFacUVDTmQxS0tXam82TWpJeU5Bd1p6bmphdnlwQ21VblNqR1dIZDNkMDFOQXBRaG1xbW1hUjQ5ZXVUenp6K1hYaC8xcEZVQkhrSlgyNDh2T0k3NzRZZjdoNGFHcURTd2hiUVNseTlmUG4vK2ZEeGZXMnEwaEdKVkl0c0Vha0txZUhjQzI2a0tKbVd2a2xKS3IxNjlPakl5WWhnR1JCY3dSaUc5TWxqc0lyK1R4RVMxODJoZEM2ckZoQndqOUZWeExoMkoxNXNYT1NFOGNPY0FhVHJ3WnlyUGdOWnFhS2hidlhvVnBaRDVWd2hpQytFd3hpekxQblBtckdYWlFoRE9pNkswL0tSSmxkVWRQbHkrZlBtQ0JXMnFRMElJWVpyRzVjdjliN3p4WDlsc21oQUJ1Vm84Zk9oblMydy92a0FJNmUyOXRIZnZQckQwT0NldUswelRkRjAzSEE2dldiT21wcVpHQ0NFdkVwd0dudXBjQ1UrcmlJd0k4N1F3c0J5d1Fqbm5odzhmdm5yMXFtbWFqcE9QclFjRFlmNzgrZlBtelNPRU1KYS9kT0E2U1hCVmxvbmlJTHU1d28xbVFoaGk5UGFpek1QTkdZamt1UDU4U0loaVFlVnl1YW1wS1d5aHA4R3ExdkxJYjlPTUxGeTRFUGExZ1I4SW9hWnB1cTV6NnRUcGREcE5aYURUdEkwUlN2aW82N3J6NTgvdjd1N21IRy8veGRPR3h2dnY3ejErL0lScGhtUlNRSzh5Q1dSQzVBb1k2dGRlZSszMDZUUFNCd3VoUWd6aVZHNjU1UmJMc21UUVR6a05JeFNYRXRhTEF5czNTd21tc2ZQRVAvaUhCUmU2c0FZZUdCall2MysveU8vYzVqMHg0RHE2K2VhYnBkZVUrY3Y1Y3VGR002R2tHQTd1Ynd6dndteWZrdjJ1bzIzaFdZMHd4dExwOU1URWhDaGVuT0RMSXNpZ0lnUSs4dmIyQlMwdHpibGNsakZtTUR4YVN2djcrNGVIaCtGUUhDbG1qUExOQTZvS2g4TWJOMjVLSnBPd0JRSjVPemtYcGhrYUhSMzd4Uy8rWTJEZ1NpUVNoUlE0ZUFLTHlCRm1Db2drZCtDS1NDVHk3cnZ2dnZIR0c1aEZnaEJDcVhBY094S0ozSDc3N1IwZEhYS1V5alhWUDFEd1A1ejJRQU1iV1pISW9EUC9JRkJsUVlqZGNWMzNwWmRlNnVucENZZkQ4TVF3d0NucXRyYk92L1hXVzBHYWxCL01Md1dxWTQ0eXhrSWhFdzBQWlVyd3VMVFhoQ056SFNLb3FtTElkMGdWZjRCYUNBM3lLQkJDS0dVdWQxdGJXeGN1WE9BNE5xaHgwR09HWWZUMzk1OC9mODZqQm1tUVdsSFZMSkVpeVhHYzFhdFgzM3JyRnN5Wml4dVBobUY4OU5GSHp6Nzc3UER3Y0RRYVJVYnkrRXNEWVpybXdZTUgvL1ZmLzNWNGVBUXl1MUFaYm03Yjl1TEZpKys2Nnk3bE1GY2hXMXlwWnF2S0VOcC85ZXJWZi9tWGYzbm5uWGRBZktqQjBPcDRxazhRb0MxTjA3UXNhOWV1WGErOTlwcDYzQkd5SERpT3UzSGpwbVhMbGducEk4VUZiWm5wL2lLak91Wm9OQnBMSnBQd0dhVWp5ZDgrWGNpeFJ4VFNuOFVvbDM5ZnRlS0lJc2hWT3A2MkJNRkpJcEZZdEdoUkpCS0JaMEtlanArY25EeDc5cHlhQjBWZCs1VnFwTFE1R1NHa29hSCt2dnZ1Z3cxRGZBM1l4akNNMTEvL3IyZWVlV1prWkFUU0I0SWxqQUZvZmhpR0VRNkhEeHc0OFBkLy8vY1hML1pHb3pISDRZWmg0dUVKU3VtOTk5NjdhTkVpY1EybmRSaGpKMCtlL1BXdmYvM2pILy80cHovOUtSeS9ESWZEcUpOUmZhSEVVVmVKakxGd09IejU4dVZubjMzMm1XZWVTYWZUeFhmTENjdXlXMXBhN3I3N2JraUI0YmRjYmlUbXlncXVUcUluU3FubkNsdXdvQ3pMbXBoSVVVcUY4QzRiWnNHSDVmV24rcndTSzdGVUlZWmhyRnk1TWg2UHA5TnAwd3k1TG9jUUdjYlk2ZE9uMHVsMGJXMHR2a3dWWjR6bklmNkpoNGtjeDlxNGNlUDk5OS8vaTEvOElocU5vdW9HNVdBWTdKVlhYdW52NzMvaWlTZldyMSt2bmx2SHdsR2N1YTdiMzkrL2UvZnVWMTk5ZFhoNE9CNlBXWllOcGgyOE16VTF0V1BIam52dXVRZmJ3QmdNMFF5T2FJQWxlZno0Y2M1NUxwZDc5ZFZYMzN2dnZjN096blhyMW0zWXNLR3pzN094c2JGTVhMampPSmN1WGZyd3d3L2ZldXV0a3lkUEdvWVJpVVR3ZmdGQ0NHTUc1ODdERHorMGV2VnFQRmJ2TjE1dUdPYXF6aHZQaEVWTlYyMHdRb2lhd1VFYXBiUHNhS0R5Q2JRejFkZG15dXFNRWM2ZHhZczc2K3ZySnlZbUtRWFRpRGlPVGFtNGVQSGlsU3NEZFhWMXJzczlCM0Q5VmZpRXVpQ0VSYVBSblR0M25qaHg0dkRodzRsRXdyWWQwSFBTeHVNZmZMRHYvUG16bXpkdjNyQmg0OUtsWGNsa2ZUUWFnY3pmbkx2WmJDNlh5MTY2ZE9ubzBXTWZmbmlncDZkSENCSUtoWEk1V3dqQkdHWE1DSVdNZERxOWJObXkzLy85MzRmN005QnRWdUU0b0NYSkdMdHk1Y3JwMDZmaFlKZHBtcWxVNnBOUFBqbDY5T2dycjd6YzN0N1cyZG5aM053OGI5Njh4c2FtYURUcXVubFRjM1IwZEdCZ29LK3Y3L1RwMHhjdlhvUmJST1V5bU12elpTS2JUVy9mdnYzQkJ4OE1oVUxva3BsVFpTZ296YWVXVW1kS0ZDVzVvR2dwek5XK1NGVnl6RkRjTnlNbGpEUUFqTVBzaHRpalhsRFhlWlJlcWRyOUtxdE1MVzF0YlV1WGRsMjhlSkZTeW5tZUxFelRIQmtaT1hIaXhMSmxOeXM5eXJ1Q3lyQzluSGdDVkxodzRjTHZmZTk3UC83eGp5OWV2QmlMeFJ4SDRLRnZTbWtzRnIxNjllcXZmLzNyUFh2MnRMVE1YN2h3UVd0cld5d1dvNVJZbHRYZjMzL2x5dFhoNGFIQndXRTREb3Y1eTBCdGhzT2hUQ2JUM3Q3KzlOTlByMWl4QWloYmxVMmUvZ1lPQ0dobXgzRmlzZGpseTVjLy8veHp5T1FMTDBQbXVKR1JrYUdob1k4Ly9sZ0lra2pFYTJwcVRkT0VwUWZuZkhKeU1wZkxRZTJoVUFpVHpjbmpLWlJTbXN0bHQyelovTlJULzYyNWVSNEt0VGxYZ05oQm9mandpMWN1UXVUVHpIeHB6ZEZBWEEvTFhsV3dLcmVyaTBBL1NYa1ljbHJGS0FRUmdpY1NpU1ZMYmlKa0QxaW4wbHcwTXBuTThlUEhIM2pnUWNZTWxhWFZCbmpNVVJWQW9MbGNic09HRFU4Ly9mUS8vdU0vbmo5L1BoNlBnOTBPdmszT1JTUVNpOFdZNDdqbnoxKzhjT0dpWkRPQlFYT01HZUZ3R0NVNnBZelNmSFJPSnBQdTZPajRrei81azgyYk53Y2FlT1VIUkVpM0ZuaFRjcmxjVDA4UCtHTUlJY0JVSkg4Y1BxTG1DRTJuTTF6SmlNVVlpOFZpVk81VXdRQzZyaHNLaFNpbHVWeE9DSEhISGR1Ly8vMm5PanM3YmR0UkY0b3pYYVNVaDZmdmdPSkErYm0zZkt0ekt4UE9MTW9ZVXV5bm5wTjlRcVJ5TmQ0M0dvMEdab3d0WllDVkgzTEdxT01JSWNUS2xTc2FHaHBTcVJRVUxqMlc0dHk1Y3dNREEyMXQ3VVF5RlpGZUVJK0F3REt4YmZDUU1lYTY3dGF0VzBPaDBELy84eitkUEhrS1Z0UlVwdFdBYlFEUWlrSUl4M0hBbFkrM3VDRlpDK2xPNUp6bmNsbkRNTmF2WC9ma2s5L2J1SEVqYkF5V3NRdEtmUll5ME1jd2pHdzJPemc0Q0FFQXBta3labEJLMEhoR05RdU5BVVpDV1NtdlB5QmdLRURITGN0eUhMZXBxWEhuenAwUFBmUWcrS2pnS05sMTJrbEdCUXZLbk1qSlF2ODVtVHNyRkZFVlRWZys3R0NPNVl5cUFCbGp5V1RTNHhQeU5xNGlQd1RPQkFXcVdyeDRjV2RuNTdGang2aUVFQ0lVQ3ZYMTlaMDZkYktqbzlPeUxGWGlZTnZLVjRTTUlZVFl2SGx6WTJQREwzLzV5ejE3M3A2Y25JUnNWTUR0b0ZMZ1ZneFZ3UUxwVTByaGhCNTRqRUN4ekovZnZHUEhqa2NlMmRuWnVZZ3JxUlA5Q25CYWN3QTdsVWdrSG4zMDBlYm01cmZmM25QdTNMbDBPbVBrd1NEcUdqc0ZEU00rUVFuczV6aU80eml1eXhzYUdqWnYzdnlOYjN4ajdkcTEwV2grUTBVMjFUdVlzMENndmMwNWh6dFJWUG1TeStVY0J6THdmeVUwSWZHZHBxVkZtS002aXJld2lCeHhXUEZEVGJ6NEFEWHgyVFllRlIwSTBGUU5EWTNyMXEwN2N1UUlxaDM0NGVqbzZNR0RoMzduZDI2SHRDV2VUYlB5VUZVaThOaE5OeTM1NFE5L3NHSERodDI3M3poKy9QakV4Q1FoSWhReXdabU1ITXRsNGltMW5Gek9jaHliTWRyYzNIenJyYmZlZSs4OWE5WjBtNlpwV1RrOFFhdDJDc3VwWktpSlhHUzJ0YlU5OGNRVDI3ZC83ZENoUTU5KyttbFBUOC9nNE5WY3pzcmxMTVpNMHpTb0RDU2d5bWFNNnpwQ2lHeDJDcnkxa1Vpa3M3TURia2ZidkhsTElsSGpPRTd4ZXBVU1V1am1yRmtSMXdKcU44UGhjRjFkSFpFekMydnBxYW1wVUNnRSt5a1FTRGlIcU1xRk1KUlNadHQySnBNaGNwTVhPaHdPaHprWGxCcUVPTmNvNVB4QVh6eWNKU2ZLSE5pMmphNXdEOWtGVXFGMG9CRWhDQ1RNajBiRFc3WnNlZXV0dDBaSFJ6RWxPMWcxSjArZXZIRGh3c3FWSzIzYjlqTjVlUTFERk5VRVZKNUkxTngzMy8xYnR0eDY5T2pSano0NmVPTEVaNWN2WHg0ZEhZVlZtZHBaSVFNaE9PZlJhTFM5dmJXam82Tzd1M3ZEaGcxTGx5Nk54Mk5BWVJDd1Zyd1dLTmYzVXUxRWNNN2IyeGN1WE5oNTMzMzM5L1gxOS9mM25UMTc3dlBQUHg4ZUhrNmxVbU5qWTZsVWFtcHFDcWxmQ0ZGVFV4T1B4K3ZyTzV1YUdqczdPMWV1WE5uVjFkWFIwUUYzTXdrQmdrWVFBZ0hjYUlrVXRYa1dpMFBQV2dDWS9PNjc3Kzd1N2lhS3FReXF1NldsaFJEQ21DRnRpaGxWVmJZWmMwN3JwWUJrQk9yK3pUZmZQSDc4T0d3MEV5bDFvdEhvUXc4OXRHVEpFcitCTksxUkZGaWRrRTQyOUxQMTlQU2NPWE1HVFgvcy9ycDE2eFlzV0FCSEI5U2NhNEdWWXVHNDd3eHVtRE5uemt4T1RxcHJUckMxbGkxYk5tL2VQT0VMUUMzVm96TFB3VWFDSlVvbWt4a2VIdTd2NysvdDdSMGNIQndhR29KTVVOaUFXQ3pXMk5qWTJNcWdKcDBBQUFVb1NVUkJWTmpZMXRiVzJkblowdElDMXJpOG9KTlI2bVYxckt1VWRSRFlUazkvY2ZwZ0NRb0NONTFPcDFLcFZDbzFQajZPYWVQZzUzVjFkZEZvRkpvYWpjWWc1YW5yY25BdkZZc3Q0RUNCRGZUWUN4VlNTS2szZWRtTGdkR0tZZmtNNG5QanBiblJUQWhMY0NJWkEwL1FZVWdoQm1laHhYS05UTWlWbUdDdzcwbnhIQWpsbkM0K0lmSjBIeW50cVJjS0tLV080MERjakVvV1JDNHo4RmVxQlY2ZXd3TTd4WlhqQ0JBVWhweVp6V1pobHcrZVFCZkM0VEFrTW9hZjRFcE0ydVRFUTBtcWd2STg4VGVHS0lKTUhSUDhvTDdNWkNwSE5SSU5Gd1ZJL1hpREwveFFEYWp5TkxKODg4cWcvQWhqeXoxVmVEWnZabEZ2S1ZTQkNWVmZBaW1lRWxhY2U0OG8zSUtqVnJtb0kzS2hJcVM1Qzc5Vnc1MEJXQjBMQ0NnUFprSnNFdTRhNDg2WStpdVJEOGNyVUpJb3ZrSjBGbjN4MExycXhGTmZWbit1cmhKUkZnUjJzUEtHZVpqUTg1V2ZSWEc2MWNGUnlab29JVDc0Z2tjV1h5ZmdZSlppVGhYcW0xOHlKaVRGd3BJVVR4VytFTGgvb0ZMUFRPc0NFUXNjQ0RYNmQ4TzRjcEJVcmJRTUU2b2R3WXBFY1NpcytqNVJ0aWhVSHFpUTNGWEdJOFd4Mmg0RmpsVjdCTG1xMkpGdjhSM1Zpek9MUWZiMDErOHk4UkMzWDFSUnhVL21lZk5HTWlHWnpqMnVEdnRjdGVyR09XYlVDVk1wWGgzM1NqVFBMTHFOTmVKUzBLTTBQSXJYcjM2bkxkOVRqdjlib3F3b3JtWHlBcFdNUjVVUnFVUDgxYWxOSlQ0R0pqTVpaSS9lOE1ndm9neTc1elVQRFhoS1VNdTVrUnFpUWx3UGNYRGp2YU5DN1liSDZsT2x0ZHJWQ24zbC9ycHdtc0Z6R0NocmlVOUg0ZnFrREJGNEpnUC9aTDVqTmNnVlFza2lVU0Y3QjBKdG02b2hWWTVTMzFGdHZGSnNjeTNrN2pjaVZHSHFaeTFQTDFSdHJQNTVMVU4wTGJpdUtqZTR4aHZaejBDUmpBK25IZjFaYUVKL2pmNHFhSkJwNVA5NVlNa2UxVjFHazgrbzhNcHJWSjk3cXZBd1cyQlQvWmkxSnZRWDRuK28vamJ3L1ZJL3ZCNzZSMFdadnBUQ0hMYXFDbzZaUU1ZanZsNTUzaVF6cEZyL3NKWmhKMUpXSEpSaXFwbUtEeExFL0JYMnFQeTRlVHBDZ3FSUEtTbFFTcVZYM2lyMXp6TDlDdFRBL2hmS2lMRHJpbXVSNzllSUtqQ2h0d1hUNmIzWlVXM2xOYzVPOFpZcG5QZ2t6a3dMbjdhdThsVlhVaVlKR3VFWk5heVVtQ3ZUZ1BMYVpnNHRvSm5pL3hkTnFLR2hFUWlkZ1Z0RG84clFUS2loVVdWb0p0VFFxREkwRTJwb1ZCbWFDVFUwcWd6TmhCb2FWWVptUWcyTktrTXpvWVpHbGFHWlVFT2p5dEJNcUtGUlpXZ20xTkNvTWpRVGFtaFVHWm9KTlRTcURNMkVHaHBWaG1aQ0RZMHFRek9oaGthVm9abFFRNlBLMEV5b29WRmxhQ2JVMEtneU5CTnFhRlFabWdrMU5Lb016WVFhR2xXR1prSU5qU3BETTZHR1JwV2htVkJEbzhyUVRLaWhVV1ZvSnRUUXFESTBFMnBvVkJtYUNUVTBxZ3pOaEJvYVZZWm1RZzJOS2tNem9ZWkdsYUdaVUVPanl0Qk1xS0ZSWldnbTFOQ29NalFUYW1oVUdab0pOVFNxRE0yRUdocFZobVpDRFkwcVF6T2hoa2FWb1psUVE2UEswRXlvb1ZGbGFDYlUwS2d5TkJOcWFGUVptZ2sxTktvTXpZUWFHbFdHWmtJTmpTcERNNkdHUnBXaG1WQkRvOHJRVEtpaFVXVm9KdFRRcURJMEUycG9WQm1hQ1RVMHFnek5oQm9hVllabVFnMk5La016b1laR2xhR1pVRU9qeXRCTXFLRlJaV2dtMU5Db01qUVRhbWhVR1pvSk5UU3FETTJFR2hwVmhtWkNEWTBxUXpPaGhrYVZvWmxRUTZQSzBFeW9vVkZsYUNiVTBLZ3lOQk5xYUZRWm1nazFOS29NellRYUdsV0daa0lOalNwRE02R0dScFdobVZCRG84clFUS2loVVdWb0p0VFFxREkwRTJwb1ZCbWFDVFUwcWd6TmhCb2FWWVptUWcyTktrTXpvWVpHbGFHWlVFT2p5dmgvaHNjNnMrc0RiYlFBQUFBQVNVVk9SSzVDWUlJPSIgaGVpZ2h0PSIzMDAiIHByZXNlcnZlQXNwZWN0UmF0aW89InhNaWRZTWlkIG1lZXQiLz48L2c+PC9nPjwvc3ZnPg==" alt="StudyTrust" style="width:90px;height:90px;display:block;margin:0 auto 14px;object-fit:contain">
+    <h2>StudyTrust Audit Tracker</h2>
+    <p>Sign in with your Microsoft 365 account to access the audit dashboard and SharePoint data.</p>
+    <button class="btn-signin" id="signin-btn" onclick="doSignIn()">
+      <svg width="18" height="18" viewBox="0 0 21 21" fill="none"><rect width="10" height="10" fill="#F25022"/><rect x="11" width="10" height="10" fill="#7FBA00"/><rect y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg>
+      Sign in with Microsoft
+    </button>
+    <div class="signin-error" id="signin-error"></div>
+  </div>
+  <div class="signin-note">Your data is stored in SharePoint · studietrust.sharepoint.com</div>
+</div>
+
+<!-- ═══ LOADING OVERLAY ═══ -->
+<div id="loading-overlay" class="hidden">
+  <div class="spinner"></div>
+  <div id="loading-msg">Loading…</div>
+  <div id="loading-sub-msg" style="color:rgba(255,255,255,.65);font-size:11px;text-align:center;max-width:320px;line-height:1.5"></div>
+  <button id="loading-dismiss" onclick="hideLoad()" style="display:none;margin-top:12px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:6px;padding:7px 20px;font-size:12px;cursor:pointer">Dismiss &amp; continue →</button>
+</div>
+
+<!-- ═══ SAVE TOAST ═══ -->
+<div id="toast"></div>
+
+<!-- ═══ HEADER ═══ -->
+<div id="hdr">
+  <div id="hdr-brand"><h1>StudyTrust Audit Tracker</h1><p id="hdr-sub">Document Management &amp; Audit Preparation System</p></div>
+  <div id="hdr-center">
+    <select id="year-sel" class="hdr-sel" onchange="switchYear(this.value)"></select>
+    <button class="hdr-btn" onclick="openM('m-add-year')">⊕ Add Year</button>
+    <button class="hdr-btn" onclick="openYearCfg()">⚙ Year Settings</button>
+    <div id="role-toggle">
+      <button class="role-opt active" id="r-admin" onclick="setRole('admin')">🔑 Admin</button>
+      <button class="role-opt" id="r-auditor" onclick="setRole('auditor')">🔍 Auditor</button>
+    </div>
+    <span id="role-badge" class="admin">Admin</span>
+    <div id="gs-wrap">
+      <span id="gs-icon">🔍</span>
+      <input type="text" id="gs-input" placeholder="Search all tabs…" oninput="globalSearch(this.value)" onfocus="this.parentElement.querySelector('#gs-results').style.display='block'" onblur="setTimeout(()=>document.getElementById('gs-results').style.display='none',200)">
+      <div id="gs-results"></div>
+    </div>
+    <button id="notif-btn" onclick="toggleNotif()">🔔<span id="notif-count" style="display:none">0</span></button>
+    <div id="user-pill">👤 <span id="user-name">…</span></div>
+    <button class="hdr-btn" onclick="exportBackup()">⬇ Backup</button>
+    <button class="hdr-btn" onclick="openM('m-restore')">⬆ Restore</button>
+    <button class="hdr-btn" onclick="openM('m-guide')">📋 Column Guide</button>
+    <button class="hdr-btn" onclick="openM('m-webhook');loadWebhookUI()">🔔 Webhooks</button>
+    <button class="hdr-btn" onclick="removeDuplicates()">🧹 Remove Duplicates</button>
+    <button class="hdr-btn" onclick="openDiag()">ℹ Diag</button>
+    <button class="hdr-btn" onclick="window.print()">🖨</button>
+  </div>
+  <div class="deadline-pill" id="dl-pill"><strong id="dl-val">—</strong><span id="dl-lbl">days to deadline</span></div>
+</div>
+
+<!-- ROLE BANNER -->
+<div id="role-banner" class="admin-mode">Admin Mode — Changes save live to SharePoint</div>
+
+<!-- NOTIFICATION PANEL -->
+<div id="notif-panel">
+  <div id="notif-hdr">
+    <h3 id="notif-title">Notifications</h3>
+    <div id="notif-hdr-actions">
+      <button class="btn btn-sm btn-sec" onclick="markAllRead()">Mark all read</button>
+      <button class="btn btn-sm" onclick="toggleNotif()" style="padding:3px 7px;font-size:11px">✕</button>
+    </div>
+  </div>
+  <div id="notif-list"></div>
+</div>
+
+<!-- TAB BAR -->
+<div id="tab-bar"></div>
+
+<!-- ═══ CONTENT ═══ -->
+<div id="content">
+
+  <div id="seed-banner">
+    <div><strong style="color:#856404">No data yet for this year.</strong> <span style="font-size:12px;color:#666;margin-left:6px">Seed with the standard StudyTrust checklist?</span></div>
+    <button class="btn btn-p" onclick="seedYear()">Seed Standard Checklist →</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="sec-dashboard" class="section active">
+    <div class="card-grid" id="dash-cards"></div>
+    <div class="pw"><div class="pl"><span>Overall Completion</span><span id="ov-pct">0%</span></div><div class="pb"><div class="pf" id="ov-fill" style="width:0%"></div></div></div>
+    <div class="dg">
+      <div class="dc2"><h3>Progress by Phase</h3><div id="phase-bars"></div></div>
+      <div class="dc2"><h3>Key Deadlines</h3><div id="timeline"></div></div>
+    </div>
+    <div class="dc2" style="margin-bottom:12px"><h3>Items Requiring Attention</h3><div id="att-list" style="margin-top:7px"></div></div>
+    <div class="dc2"><h3>Late Items — Past Compliance Date</h3><div id="late-list" style="margin-top:7px"></div></div>
+  </div>
+
+  <!-- PLANNING -->
+  <div id="sec-planning" class="section">
+    <div class="sh"><h2>Planning — Document Preparation</h2>
+      <div class="sa"><span id="plan-pct" style="font-size:11px;color:#888">0%</span><button class="btn btn-p" onclick="addRow('planning')">+ Add</button><button class="btn" onclick="exportCsv('planning')">CSV</button><button class="btn btn-sec" onclick="exportXlsx('planning')">XLSX</button></div>
+    </div>
+    <div class="fb">
+      <input type="text" id="f-planning-q" placeholder="Search…" oninput="filterTab('planning')">
+      <select id="f-planning-s" onchange="filterTab('planning')"><option value="">All Statuses</option></select>
+      <select id="f-planning-p" onchange="filterTab('planning')"><option value="">All Persons</option></select>
+      <select id="f-planning-l" onchange="filterTab('planning')"><option value="">All Items</option><option value="late">Late Only</option><option value="nodoc">No Link Yet</option></select>
+      <span class="fb-lbl">Compliance:</span>
+      <input type="date" id="f-planning-cf" onchange="filterTab('planning')" title="Compliance from">
+      <span class="fb-sep">to</span>
+      <input type="date" id="f-planning-ct" onchange="filterTab('planning')" title="Compliance to">
+      <span class="fb-lbl">Uploaded:</span>
+      <input type="date" id="f-planning-uf" onchange="filterTab('planning')" title="Uploaded from">
+      <span class="fb-sep">to</span>
+      <input type="date" id="f-planning-ut" onchange="filterTab('planning')" title="Uploaded to">
+      <button class="btn" onclick="clearFilters('planning')" style="padding:4px 9px;font-size:11px">Clear</button>
+    </div>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:17%"><col style="width:8%">
+      <col style="width:8%"><col style="width:9%"><col style="width:7%"><col style="width:7%">
+      <col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:9.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Description</th><th>Compliance Date</th>
+      <th>Date Uploaded</th><th>Status</th><th>Responsible</th><th>Shadower</th>
+      <th>Document Category</th><th>Upload / Link</th><th>Notes</th><th>Comments</th>
+    </tr></thead><tbody id="body-planning"></tbody></table></div>
+  </div>
+
+  <!-- EXECUTION -->
+  <div id="sec-execution" class="section">
+    <div class="sh"><h2>Execution — Deliverable Listing</h2>
+      <div class="sa"><span id="exec-pct" style="font-size:11px;color:#888">0%</span><button class="btn btn-a" onclick="copyPlanningToExecution()" title="Copy all Planning items into Execution (statuses reset to Not Started)">⬇ Copy from Planning</button><button class="btn btn-p" onclick="addRow('execution')">+ Add</button><button class="btn" onclick="exportCsv('execution')">CSV</button><button class="btn btn-sec" onclick="exportXlsx('execution')">XLSX</button></div>
+    </div>
+    <div class="fb">
+      <input type="text" id="f-execution-q" placeholder="Search…" oninput="filterTab('execution')">
+      <select id="f-execution-s" onchange="filterTab('execution')"><option value="">All Statuses</option></select>
+      <select id="f-execution-l" onchange="filterTab('execution')"><option value="">All Items</option><option value="late">Late Only</option><option value="nodoc">No Link Yet</option></select>
+      <span class="fb-lbl">Compliance:</span>
+      <input type="date" id="f-execution-cf" onchange="filterTab('execution')" title="Compliance from">
+      <span class="fb-sep">to</span>
+      <input type="date" id="f-execution-ct" onchange="filterTab('execution')" title="Compliance to">
+      <span class="fb-lbl">Uploaded:</span>
+      <input type="date" id="f-execution-uf" onchange="filterTab('execution')" title="Uploaded from">
+      <span class="fb-sep">to</span>
+      <input type="date" id="f-execution-ut" onchange="filterTab('execution')" title="Uploaded to">
+      <button class="btn" onclick="clearFilters('execution')" style="padding:4px 9px;font-size:11px">Clear</button>
+    </div>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:17%"><col style="width:8%">
+      <col style="width:8%"><col style="width:9%"><col style="width:7%"><col style="width:7%">
+      <col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:9.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Description</th><th>Compliance Date</th>
+      <th>Date Uploaded</th><th>Status</th><th>Responsible</th><th>Shadower</th>
+      <th>Document Category</th><th>Upload / Link</th><th>Notes</th><th>Comments</th>
+    </tr></thead><tbody id="body-execution"></tbody></table></div>
+  </div>
+
+  <!-- RECOMMENDATIONS -->
+  <div id="sec-recommendations" class="section">
+    <div class="sh"><h2>Prior Year Recommendations</h2>
+      <div class="sa"><span id="rec-pct" style="font-size:11px;color:#888">0%</span>
+        <button class="btn btn-a" onclick="openImportRecs()">⬆ Import to Planning</button>
+        <button class="btn btn-p" onclick="addRow('recommendations')">+ Add</button>
+        <button class="btn" onclick="exportCsv('recommendations')">CSV</button>
+      </div>
+    </div>
+    <div class="fb">
+      <input type="text" id="f-recommendations-q" placeholder="Search…" oninput="filterTab('recommendations')">
+      <select id="f-recommendations-s" onchange="filterTab('recommendations')"><option value="">All Statuses</option></select>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th style="min-width:155px">Weakness</th><th style="min-width:175px">Recommendation</th>
+      <th>Compliance Date</th><th>Status</th><th>Responsible</th><th>Shadower</th>
+      <th>Document Category</th><th>Upload / Link</th><th>Document Name</th>
+    </tr></thead><tbody id="body-recommendations"></tbody></table></div>
+  </div>
+
+  <!-- SAMPLING -->
+  <div id="sec-sampling" class="section">
+    <div class="sh"><h2>Sampling</h2><button class="btn btn-p" onclick="addRow('sampling')">+ Add</button></div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th>Description</th><th>Requested By</th><th>Date Requested</th>
+      <th>Date Uploaded</th><th>Status</th><th>Responsible</th><th>Document Category</th><th>Upload / Link</th><th>Document Name</th>
+    </tr></thead><tbody id="body-sampling"></tbody></table></div>
+  </div>
+
+  <!-- TEAMS ACCESS -->
+  <div id="sec-teams" class="section">
+    <div class="sh"><h2>Auditors — Teams / SharePoint Access</h2><button class="btn btn-p" onclick="addRow('teams')">+ Add</button></div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th>Email Address</th><th>Requested By</th><th>Date Requested</th>
+      <th>Date Connected</th><th>Status</th><th>Responsible</th><th>Remarks</th>
+    </tr></thead><tbody id="body-teams"></tbody></table></div>
+  </div>
+
+  <!-- DOCUMENT REGISTER -->
+  <div id="sec-register" class="section">
+    <div class="sh"><h2>Document Request Register</h2><button class="btn btn-p" onclick="addRow('register')">+ Add</button></div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th>Date</th><th style="min-width:175px">Document Requested</th><th>Requester</th>
+      <th>Requested From</th><th>Submitter</th><th>Date Submitted</th><th>Document Name</th><th>Document Link</th><th>Comment</th>
+    </tr></thead><tbody id="body-register"></tbody></table></div>
+  </div>
+
+  <!-- AUDITOR REQUESTS (admin view) -->
+  <div id="sec-aud-requests" class="section">
+    <div class="sh"><h2>Auditor Document Requests</h2><button class="btn" onclick="exportCsv('auditorRequests')">CSV</button></div>
+    <div class="dc2" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="color:var(--st);font-size:13px">How this tab works</strong>
+        <button class="btn btn-sm" onclick="this.closest('.dc2').querySelector('.instr-body').classList.toggle('open')">Show / Hide</button>
+      </div>
+      <div class="instr-body" style="font-size:12px;line-height:1.7;color:var(--tx)">
+        <p style="margin:0 0 8px"><strong>What this tab is for.</strong> The Planning and Execution tabs cover everything StudyTrust prepared in advance. But once TPCSA is in the room, they will almost always need something that was not on the original checklist. This tab is where those additional requests land and are tracked from start to resolution.</p>
+        <p style="margin:0 0 8px"><strong>The workflow:</strong> Open → Assign (In Progress) → Prepare &amp; Upload → Resolved (Teams notification fires) → Closed.</p>
+      </div>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th>Date</th><th>From</th><th style="min-width:190px">Description</th>
+      <th>Urgency</th><th>Status</th><th>Assigned To</th><th>Date Resolved</th><th>Documents</th><th></th>
+    </tr></thead><tbody id="body-aud-requests"></tbody></table></div>
+  </div>
+
+  <!-- AUDITOR VIEW -->
+  <div id="sec-aud-overview" class="section">
+    <div class="card-grid" id="aud-cards"></div>
+    <div id="new-banner" style="background:var(--new-bg);border:1px solid var(--new-border);border-radius:var(--rad-lg);padding:13px 16px;margin-bottom:14px;display:none">
+      <div style="font-weight:700;color:var(--new);font-size:13px;margin-bottom:5px">🆕 New Documents Since Audit Start</div>
+      <div id="new-list" style="font-size:12px"></div>
+    </div>
+    <div class="dc2"><h3>Document Availability by Phase</h3><div id="aud-phases" style="margin-top:7px"></div></div>
+  </div>
+
+  <div id="sec-aud-docs" class="section">
+    <div class="sh"><h2>Available Documents</h2>
+      <div class="sa">
+        <input type="text" id="aud-q" placeholder="Search…" oninput="renderAudDocs()" style="border:.5px solid #ccc;border-radius:6px;padding:5px 9px;font-size:12px">
+        <select id="aud-phase" onchange="renderAudDocs()" style="border:.5px solid #ccc;border-radius:6px;padding:5px 8px;font-size:12px">
+          <option value="">All Phases</option><option value="planning">Planning</option><option value="execution">Execution</option>
+        </select>
+      </div>
+    </div>
+    <div id="aud-doc-list"></div>
+  </div>
+
+  <div id="sec-aud-my-requests" class="section">
+    <div class="rf">
+      <h3>📋 Submit a Document Request</h3>
+      <div class="fr">
+        <div class="fg"><label>Your Name</label><input type="text" id="req-name" placeholder="e.g. Denelcia Chetty"></div>
+        <div class="fg"><label>Urgency</label><select id="req-urgency"><option>Normal</option><option>High</option><option>Urgent</option></select></div>
+      </div>
+      <div class="fr"><div class="fg" style="flex:2;min-width:100%"><label>Document / Information Needed</label>
+        <textarea id="req-desc" placeholder="Describe what you need and which audit item it relates to…"></textarea>
+      </div></div>
+      <div style="text-align:right"><button class="btn btn-p" onclick="submitRequest()">Submit Request →</button></div>
+    </div>
+    <div class="sh" style="margin-top:14px"><h2>My Submitted Requests</h2></div>
+    <div id="my-req-list"></div>
+  </div>
+
+  <input type="file" id="file-upload-input" style="display:none" onchange="handleFileUpload(this)">
+  <input type="file" id="multi-upload-input" style="display:none" multiple onchange="handleFolderUpload(this)">
+
+  <!-- AUDIT QUESTIONS -->
+  <div id="sec-questions" class="section">
+    <div class="sh">
+      <h2>Audit Questions</h2>
+      <div class="sa"><button class="btn btn-p" onclick="addRow('questions')">+ Add</button>
+      <button class="btn" onclick="exportCsv('questions')">CSV</button>
+      <button class="btn btn-sec" onclick="exportXlsx('questions')">XLSX</button></div>
+    </div>
+    <div class="dc2 info-bl" style="margin-bottom:12px;padding:12px 14px">
+      <strong>What this tab is for.</strong>
+      Use this tab for information that auditors request verbally or in writing, where the answer is text only — no document to upload. Each row has a Question, a Source, an Answer, a Status, and a Responsible person.
+      <span id="q-auditor-note" style="display:none"><br><br><strong>For auditors:</strong> use <em>+ Add</em> to submit a new question for the StudyTrust team to answer here — no document upload needed. Once StudyTrust responds, the answer will appear in the Answer / Response column.</span>
+    </div>
+    <div class="fb" style="margin-bottom:8px">
+      <input type="text" id="f-questions-q" placeholder="Search questions…" oninput="filterTab('questions')" style="max-width:280px">
+      <select id="f-questions-s" onchange="filterTab('questions')"><option value="">All Statuses</option><option>Open</option><option>In Progress</option><option>Answered</option><option>Referred</option></select>
+      <select id="f-questions-src" onchange="filterTab('questions')"><option value="">All Sources</option><option>Anticipated</option><option>Prior Year</option><option>Auditor</option></select>
+      <button class="btn" style="padding:4px 9px;font-size:11px" onclick="clearFilters('questions')">Clear</button>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th>
+      <th style="min-width:220px">Question</th>
+      <th>Source</th><th>Status</th><th>Responsible</th>
+      <th style="min-width:280px">Answer / Response</th><th>Notes</th>
+    </tr></thead><tbody id="body-questions"></tbody></table></div>
+  </div>
+
+  <!-- PERSONNEL DOCUMENTS -->
+  <div id="sec-personnel" class="section">
+    <div class="sh">
+      <h2>Personnel Documents</h2>
+      <div class="sa"><button class="btn btn-p" onclick="addRow('personnel')">+ Add</button>
+      <button class="btn" onclick="exportCsv('personnel')">CSV</button></div>
+    </div>
+    <div class="info-box" style="background:#fce4ec;border-left:4px solid #f48fb1;color:#5d0a26">
+      <strong>🔒 Restricted access.</strong>
+      This tab is visible only to members of <strong>Dashboards - HR-Authorised-Personnel</strong>.
+      Rows marked <em>Internal Only</em> are not visible to auditors. Change to <em>Grant Auditor Access</em> only for a specific audit request, then revert to Internal Only once closed.
+    </div>
+    <div class="fb" style="margin-bottom:8px">
+      <input type="text" id="f-personnel-q" placeholder="Search personnel documents…" oninput="filterTab('personnel')" style="max-width:280px">
+      <select id="f-personnel-s" onchange="filterTab('personnel')"><option value="">All Statuses</option></select>
+      <button class="btn" style="padding:4px 9px;font-size:11px" onclick="clearFilters('personnel')">Clear</button>
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th style="min-width:180px">Description</th>
+      <th>Compliance Date</th><th>Uploaded</th><th>Status</th><th>Responsible</th>
+      <th>Document Category</th><th>Upload / Link</th><th>Auditor Access</th>
+    </tr></thead><tbody id="body-personnel"></tbody></table></div>
+    <div class="info-box info-gn" style="margin-top:14px">
+      <strong>Auditor Access — How it works.</strong>
+      When TPCSA requests a personnel document, change the relevant row to <em>Grant Auditor Access</em>. Once the auditor confirms receipt and the request is Closed, revert to <em>Internal Only</em> and notify Simon Letsela to revoke folder access.
+    </div>
+  </div>
+
+  <!-- RESPONSE LINKS -->
+  <div id="sec-links" class="section">
+    <div class="sh">
+      <h2>Response Links</h2>
+      <div class="sa" id="links-admin-actions"><button class="btn btn-p" onclick="addRow('links')">+ Add Link</button></div>
+    </div>
+    <div class="dc2 info-bl" style="margin-bottom:12px;padding:12px 14px">
+      <strong>What this tab is for.</strong>
+      Links to key SharePoint folders and documents that are referenced repeatedly during the audit — for example the organisation's main SharePoint site, the annual report, and the financial statements — are stored here instead of being shared by email each time. Add a short description for each link so everyone knows what it points to.
+    </div>
+    <div class="tw"><table><thead><tr>
+      <th class="n">#</th><th style="min-width:180px">Name / Description</th>
+      <th style="min-width:280px">Link</th><th style="min-width:200px">Notes</th><th></th>
+    </tr></thead><tbody id="body-links"></tbody></table></div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="dash-footer">StudyTrust Audit Tracker v4.7 &nbsp;·&nbsp; studietrust.sharepoint.com &nbsp;·&nbsp; Document Management &amp; Audit Preparation</footer>
+
+
+<!-- WEBHOOK CONFIG MODAL -->
+<div class="ov" id="m-webhook"><div class="modal" style="max-width:540px">
+  <div class="modal-hd"><span class="modal-title">Teams Webhook — Auditor Notifications</span><button class="modal-x" onclick="closeM('m-webhook')">×</button></div>
+  <div class="modal-body">
+    <div class="mn">When an Auditor Request is set to Resolved, a notification card is posted to this Teams channel.</div>
+    <div class="mn" style="margin-top:8px"><strong>How to get the webhook URL:</strong> In Teams, open the auditor channel → ••• → Workflows → Post to a channel when a webhook request is received → copy the URL.</div>
+    <div style="margin:14px 0 6px;display:flex;align-items:center;gap:8px">
+      <span class="wh-dot wh-empty" id="wh-dot"></span>
+      <label style="font-size:11px;font-weight:700;color:var(--tx2)">External Auditors channel webhook URL</label>
+    </div>
+    <input type="url" id="wh-auditor-url" placeholder="https://studietrust.webhook.office.com/webhookb2/…"
+      style="width:100%;border:1px solid var(--bdr);border-radius:5px;padding:7px 10px;font-size:12px;font-family:'Courier New',monospace;box-sizing:border-box;margin-bottom:10px">
+  </div>
+  <div class="modal-actions">
+    <button class="btn" onclick="closeM('m-webhook')">Cancel</button>
+    <button class="btn btn-sec" onclick="testWebhook()">🔔 Test</button>
+    <button class="btn btn-p" onclick="saveWebhooks()">Save Webhook URL</button>
+  </div>
+</div></div>
+
+<!-- ADD YEAR -->
+<div class="ov" id="m-add-year"><div class="modal">
+  <div class="modal-hd"><span class="modal-title">Add New Audit Year</span><button class="modal-x" onclick="closeM('m-add-year')">×</button></div>
+  <div class="modal-body">
+    <div class="mn">Creates a new year. Optionally copies planning template from another year (statuses reset) and imports prior year recommendations as new planning tasks.</div>
+    <div class="mr"><div class="mg"><label>Year (e.g. 2026)</label><input type="text" id="ny-id" placeholder="2026" maxlength="4"></div><div class="mg"><label>Display Label</label><input type="text" id="ny-label" placeholder="FY 2026 (June 2027 Audit)"></div></div>
+    <div class="mr"><div class="mg"><label>FY End Date</label><input type="date" id="ny-fyend"></div><div class="mg"><label>Internal ST Deadline</label><input type="date" id="ny-deadline"></div></div>
+    <div class="mr"><div class="mg"><label>Audit Start Date<br><small>NEW badge shows for docs uploaded on/after this date</small></label><input type="date" id="ny-auditstart"></div><div class="mg"><label>Shadower Deadline</label><input type="date" id="ny-shadower"></div></div>
+    <div class="mr"><div class="mg"><label>Audit Firm</label><input type="text" id="ny-firm" placeholder="TPCSA"></div><div class="mg"><label>Copy Template From</label><select id="ny-from"><option value="">Standard Template</option></select></div></div>
+    <div class="mr"><div class="mg"><label style="display:flex;align-items:center;gap:5px;font-weight:400"><input type="checkbox" id="ny-recs"> Import prior year Recommendations as Planning items</label></div></div>
+  </div>
+  <div class="modal-actions"><button class="btn" onclick="closeM('m-add-year')">Cancel</button><button class="btn btn-p" onclick="addYear()">Create Year →</button></div>
+</div></div>
+
+<!-- YEAR CONFIG -->
+<div class="ov" id="m-year-cfg"><div class="modal">
+  <div class="modal-hd"><span class="modal-title">Year Settings — <span id="yc-ttl"></span></span><button class="modal-x" onclick="closeM('m-year-cfg')">×</button></div>
+  <div class="modal-body">
+    <div class="mr"><div class="mg"><label>Display Label</label><input type="text" id="yc-label"></div><div class="mg"><label>Audit Firm</label><input type="text" id="yc-firm"></div></div>
+    <div class="mr"><div class="mg"><label>FY End Date</label><input type="date" id="yc-fyend"></div><div class="mg"><label>Internal Deadline</label><input type="date" id="yc-deadline"></div></div>
+    <div class="mr"><div class="mg"><label>Audit Start Date<br><small>Documents uploaded from this date onwards show as NEW to auditors</small></label><input type="date" id="yc-auditstart"></div><div class="mg"><label>Shadower Deadline</label><input type="date" id="yc-shadower"></div></div>
+  </div>
+  <div class="modal-actions"><button class="btn" onclick="closeM('m-year-cfg')">Cancel</button><button class="btn btn-p" onclick="saveYearCfg()">Save to SharePoint</button></div>
+</div></div>
+
+<!-- IMPORT RECS -->
+<div class="ov" id="m-import-recs"><div class="modal">
+  <div class="modal-hd"><span class="modal-title">Import Recommendations as Planning Items</span><button class="modal-x" onclick="closeM('m-import-recs')">×</button></div>
+  <div class="modal-body">
+    <div class="mn">Copies the selected year's Recommendations into the Planning tab of the target year as new tasks. Existing items are not changed.</div>
+    <div class="mr"><div class="mg"><label>Copy FROM year</label><select id="ir-from"></select></div><div class="mg"><label>Copy TO year</label><select id="ir-to"></select></div></div>
+    <div class="mr"><div class="mg"><label>Compliance Date for imported items (optional)</label><input type="date" id="ir-due"></div></div>
+  </div>
+  <div class="modal-actions"><button class="btn" onclick="closeM('m-import-recs')">Cancel</button><button class="btn btn-p" onclick="importRecs()">Import →</button></div>
+</div></div>
+
+<!-- RESTORE -->
+<div class="ov" id="m-restore"><div class="modal">
+  <div class="modal-hd"><span class="modal-title">Restore from JSON Backup</span><button class="modal-x" onclick="closeM('m-restore')">×</button></div>
+  <div class="modal-body">
+    <div class="mn">Paste a JSON backup. Items will be posted to SharePoint — existing items are not deleted.</div>
+    <div class="mg"><textarea id="restore-data" style="min-height:130px;width:100%;border:1px solid #ccc;border-radius:6px;padding:8px;font-family:monospace;font-size:11px;margin-top:5px" placeholder="Paste JSON backup here…"></textarea></div>
+  </div>
+  <div class="modal-actions"><button class="btn" onclick="closeM('m-restore')">Cancel</button><button class="btn btn-p" onclick="doRestore()">Restore to SharePoint</button></div>
+</div></div>
+
+<!-- COLUMN GUIDE -->
+<div class="ov" id="m-guide"><div class="modal" style="max-width:620px">
+  <div class="modal-hd"><span class="modal-title">SharePoint List Column Reference</span><button class="modal-x" onclick="closeM('m-guide')">×</button></div>
+  <div class="modal-body">
+    <div class="mn">Create each list in SharePoint with these exact column names and types. The internal name (used by the API) is set at creation — copy the name exactly.</div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditConfig</p>
+    <div class="cg"><span>Year</span><em> Text</em> · <span>Label</span><em> Text</em> · <span>FYEnd</span><em> Date</em> · <span>Deadline</span><em> Date</em> · <span>AuditStart</span><em> Date</em> · <span>Shadower</span><em> Date</em> · <span>Firm</span><em> Text</em></div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditPlanning &amp; AuditExecution (same columns)</p>
+    <div class="cg"><span>Year</span><em> Text</em> · <span>Title</span><em> Text</em> · <span>DueDate</span><em> Date</em> · <span>Uploaded</span><em> Date</em> · <span>Status</span><em> Choice*</em> · <span>Responsible</span><em> Text</em> · <span>Shadower</span><em> Text</em> · <span>DocName</span><em> Text (Document Category)</em> · <span>DocLink</span><em> Hyperlink</em> · <span>Notes</span><em> Text (Document Name)</em> · <span>Comments</span><em> Text</em></div>
+    <p style="font-size:10px;color:#888;margin:3px 0 8px">*Status choices: Completed · In progress · Requires Attention · Not Started</p>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditRecommendations</p>
+    <div class="cg"><span>Year</span> · <span>Title</span><em> (Weakness)</em> · <span>Recommendation</span> · <span>DueDate</span> · <span>Status</span> · <span>Responsible</span> · <span>Shadower</span> · <span>DocName</span> · <span>DocLink</span> · <span>Comments</span></div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditRequests</p>
+    <div class="cg"><span>Year</span> · <span>RequestDate</span><em> Date</em> · <span>RequestedBy</span> · <span>Title</span><em> (Description)</em> · <span>Urgency</span><em> Choice</em> · <span>Status</span><em> Choice</em> · <span>AssignedTo</span> · <span>DateResolved</span> · <span>ResponseLink</span><em> Hyperlink</em> · <span>Notes</span></div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditResponseLinks</p>
+    <div class="cg"><span>Year</span> · <span>RequestId</span><em> Text</em> · <span>DocName</span> · <span>DocLink</span><em> Text</em> · <span>UploadedBy</span> · <span>UploadedDate</span> · <span>Notes</span></div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditPersonnel (restricted)</p>
+    <div class="cg"><span>Title</span> · <span>DueDate</span> · <span>Uploaded</span> · <span>Status</span> · <span>Responsible</span> · <span>DocName</span> · <span>DocLink0</span> · <span>Notes</span> · <span>AccessLevel</span><em> Choice: Internal Only | Grant Auditor Access</em></div>
+    <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:4px">AuditQuestions</p>
+    <div class="cg"><span>Year</span> · <span>Title</span><em> (Question)</em> · <span>Source</span><em> Choice (Anticipated · Prior Year · Auditor)</em> · <span>Answer</span><em> Multi-text</em> · <span>Status</span><em> Choice (Open · In Progress · Answered · Referred)</em> · <span>Responsible</span> · <span>Notes</span></div>
+  </div>
+  <div class="modal-actions"><button class="btn btn-p" onclick="closeM('m-guide')">Close</button></div>
+</div></div>
+
+<!-- DIAGNOSTICS MODAL -->
+<div class="ov" id="m-diag"><div class="modal" style="max-width:480px">
+  <div class="modal-hd"><span class="modal-title">ℹ Diagnostics</span><button class="modal-x" onclick="closeM('m-diag')">×</button></div>
+  <div class="modal-body" id="diag-body">
+    <div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Configuration and connectivity status for the current session.</div>
+    <div id="diag-rows"></div>
+  </div>
+  <div class="modal-actions"><button class="btn btn-p" onclick="closeM('m-diag')">Close</button></div>
+</div></div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════
+//  ▶▶  IT PERSON: PASTE YOUR CLIENT ID HERE  ◀◀
+// ═══════════════════════════════════════════════
+const CLIENT_ID = 'c5c93f6e-957d-431f-8e83-ff22e7be10a9';
+//
+//  Get this from Azure Portal → App registrations → your app → Overview
+//  If your Microsoft 365 tenant name is NOT "studietrust",
+//  update the authority URL in MSAL_CONFIG below too.
+// ═══════════════════════════════════════════════
+
+const SP_SITE_HOST = 'studietrust.sharepoint.com';
+const SP_SITE_PATH = '/sites/StudyTrustAuditTracker';
+const GRAPH_BASE   = 'https://graph.microsoft.com/v1.0';
+
+const MSAL_CONFIG = {
+  auth: {
+    clientId:    CLIENT_ID,
+    authority:   'https://login.microsoftonline.com/studietrust.onmicrosoft.com',
+    redirectUri: 'https://studytrust.github.io/auth.html'
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: true }
+};
+
+const GRAPH_SCOPES = ['Sites.ReadWrite.All', 'Sites.Manage.All', 'User.Read', 'GroupMember.Read.All'];
+
+// ── SharePoint list names ──
+const LISTS = {
+  config:'AuditConfig', planning:'AuditPlanning', execution:'AuditExecution',
+  recommendations:'AuditRecommendations', sampling:'AuditSampling', teams:'AuditTeams',
+  register:'AuditRegister', auditorRequests:'AuditRequests', responseLinks:'AuditResponseLinks',
+  personnel:'AuditPersonnel', questions:'AuditQuestions', links:'AuditResponseLinks'
+};
+
+// ── Field mapping: app key → SharePoint column name ──
+const F = {
+  planning:        { desc:'Title', dueDate:'DueDate', uploaded:'Uploaded', status:'Status', responsible:'Responsible', shadower:'Shadower', docName:'DocName', docLink:'DocLink0', notes:'Notes', comments:'Comments' },
+  execution:       { desc:'Title', dueDate:'DueDate', uploaded:'Uploaded', status:'Status', responsible:'Responsible', shadower:'Shadower', docName:'DocName', docLink:'DocLink0', notes:'Notes', comments:'Comments' },
+  recommendations: { weakness:'Title', recommendation:'Recommendation', dueDate:'DueDate', status:'Status', responsible:'Responsible', shadower:'Shadower', docName:'DocName', docLink:'DocLink0', comments:'Comments' },
+  sampling:        { desc:'Title', requestedBy:'RequestedBy', dateRequested:'DateRequested', uploaded:'Uploaded', status:'Status', responsible:'Responsible', docName:'DocName', docLink:'DocLink0', notes:'Notes' },
+  teams:           { email:'Email', requestedBy:'RequestedBy', dateRequested:'DateRequested', dateConnected:'DateConnected', status:'Status', responsible:'Responsible', remarks:'Remarks' },
+  register:        { dateRequested:'DateRequested', doc:'Title', requester:'Requester', requestedFrom:'RequestedFrom', submitter:'Submitter', dateSubmitted:'DateSubmitted', docName:'DocName', docLink:'DocLink0', comment:'Comment' },
+  auditorRequests: { date:'RequestDate', requestedBy:'RequestedBy', description:'Title', urgency:'Urgency', status:'Status', assignedTo:'AssignedTo', dateResolved:'DateResolved', responseLink:'ResponseLink', notes:'Notes' },
+  responseLinks:   { requestId:'RequestId', docName:'DocName', docLink:'DocLink', uploadedBy:'UploadedBy', uploadedDate:'UploadedDate', notes:'Notes' },
+  links:           { requestId:'RequestId', docName:'DocName', docLink:'DocLink', uploadedBy:'UploadedBy', uploadedDate:'UploadedDate', notes:'Notes' },
+  questions:       { desc:'Title', source:'Source', answer:'Answer', status:'Status', responsible:'Responsible', notes:'Notes' },
+  personnel:       { desc:'Title', dueDate:'DueDate', uploaded:'Uploaded', status:'Status', responsible:'Responsible', docName:'DocName', docLink:'DocLink0', notes:'Notes', accessLevel:'AccessLevel' },
+  config:          { id:'Year', label:'Label', fyEnd:'FYEnd', deadline:'Deadline', auditStart:'AuditStart', shadower:'Shadower', firm:'Firm' }
+};
+
+const DATE_FIELDS = new Set(['dueDate','uploaded','dateRequested','dateConnected','dateSubmitted','dateResolved','date','fyEnd','deadline','auditStart','FYEnd','Deadline','AuditStart','DateRequested','DateConnected','DateSubmitted','DateResolved','RequestDate','Uploaded']);
+
+const HYPERLINK_FIELDS = new Set(['responseLink']); // DocLink changed to Multiple Lines — treated as plain text
+
+function spWriteValue(field, value, item){
+  if (HYPERLINK_FIELDS.has(field)) {
+    if (!value) return null;
+    return { Url: value, Description: (item && item.docName) || value };
+  }
+  if (DATE_FIELDS.has(field)) return value ? value + 'T00:00:00Z' : null;
+  return value || null;
+}
+function spReadValue(field, v){
+  if (HYPERLINK_FIELDS.has(field) && v && typeof v === 'object') return v.Url || '';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.substring(0,10);
+  return v == null ? '' : v;
+}
+
+// ════════════════════════════════════════════════
+// STATUSES & DOC CATEGORIES
+// ════════════════════════════════════════════════
+const STATUSES = ['Completed','Awaiting Approval','In progress','Requires Attention','Not Applicable','Not Started'];
+const REQ_STATUSES = ['Open','Submitted','In Progress','Resolved','Closed'];
+
+const DOC_CATEGORIES = [
+  {label:'Assets and Financials',             lib:'{year}', path:'Execution/04_Assets_and_Financials'},
+  {label:'Auditor Requests',                  lib:'{year}', path:'Auditor Requests'},
+  {label:'Bank and Investment Accounts',      lib:'Audit Standing Documents', path:'03_Bank_and_Investment_Accounts'},
+  {label:'Bank and Investment Statements',    lib:'{year}', path:'Execution/01_Bank_and_Investment_Statements'},
+  {label:'Budget and Going Concern',          lib:'{year}', path:'Planning/13_Budget_and_Going_Concern'},
+  {label:'Bursaries and Revenue',             lib:'{year}', path:'Planning/07_Bursaries_and_Revenue'},
+  {label:'Contracts and Agreements',          lib:'{year}', path:'Planning/03_Contracts_and_Agreements'},
+  {label:'Employment Compliance',             lib:'{year}', path:'Planning/11_Employment_Compliance'},
+  {label:'Finance Narratives',                lib:'{year}', path:'Planning/04_Finance_Narratives'},
+  {label:'Funder Agreements',                 lib:'{year}', path:'Execution/06_Funder_Agreements'},
+  {label:'Governance and Board',              lib:'{year}', path:'Planning/01_Governance_and_Board'},
+  {label:'Insurance',                         lib:'{year}', path:'Planning/09_Insurance'},
+  {label:'Internal Policies',                 lib:'Audit Standing Documents', path:'04_Internal_Policies'},
+  {label:'IT Systems and Access',             lib:'{year}', path:'Execution/08_IT_Systems_and_Access'},
+  {label:'Legal and Registration',            lib:'Audit Standing Documents', path:'01_Legal_and_Registration'},
+  {label:'Management Accounts',              lib:'{year}', path:'Planning/05_Management_Accounts'},
+  {label:'Miscellaneous',                     lib:'{year}', path:'Planning/08_Miscellaneous'},
+  {label:'Narrative and Annual Report',       lib:'{year}', path:'Planning/02_Narrative_and_Annual_Report'},
+  {label:'Organisational',                    lib:'Audit Standing Documents', path:'02_Organisational'},
+  {label:'Payroll and Personnel',             lib:'{year}', path:'Execution/03_Payroll_and_Personnel'},
+  {label:'Personnel Contracts',               lib:'{year}', path:'Execution/03_Payroll_and_Personnel/Personnel_Contracts'},
+  {label:'Procurement and Payments',          lib:'{year}', path:'Execution/02_Procurement_and_Payments'},
+  {label:'Related Parties',                   lib:'{year}', path:'Execution/07_Related_Parties'},
+  {label:'Risk and Control Framework',        lib:'{year}', path:'Planning/12_Risk_and_Control_Framework'},
+  {label:'Sampling and Vouching',             lib:'{year}', path:'Execution/05_Sampling_and_Vouching'},
+  {label:'Statutory Compliance',              lib:'{year}', path:'Planning/10_Statutory_Compliance'},
+  {label:'Tax and SARS',                      lib:'{year}', path:'Planning/06_Tax_and_SARS'},
+  {label:'Year-End Journals',                 lib:'{year}', path:'Execution/09_Year_End_Journals'},
+];
+function docLibForYear(cat, year){ return cat.lib === '{year}' ? 'Audit ' + year : cat.lib; }
+function docCatOptions(sel){ DOC_CATEGORIES.forEach(c=>{ const o=document.createElement('option');o.value=c.label;o.textContent=c.label;sel.appendChild(o); }); }
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let msalApp, graphToken, graphSiteId;
+let userName = '', userRole = 'admin', hasPersonnelAccess = false;
+let currentYear = '';
+let yearConfigs  = {};   // year → config object
+let planItems    = [];
+let execItems    = [];
+let recItems     = [];
+let sampItems    = [];
+let teamsItems   = [];
+let regItems     = [];
+let reqItems     = [];
+let rlItems      = [];   // response links
+let questItems   = [];
+let persItems    = [];
+let _pendingUpload = null; // { tab, id, multi }
+let _webhookUrl  = '';
+
+// ════════════════════════════════════════════════
+// MSAL & GRAPH AUTH
+// ════════════════════════════════════════════════
+async function initMsal() {
+  if (CLIENT_ID === 'PASTE_CLIENT_ID_HERE') throw new Error('The Application (client) ID has not been set. Open this HTML file in a text editor and paste your Azure AD Client ID.');
+  msalApp = new msal.PublicClientApplication(MSAL_CONFIG);
+  await msalApp.initialize();
+  // Handle redirect response — wrap in try/catch so a stale MSAL redirect
+  // state (cached from an interrupted login) does not crash the sign-in screen.
+  let redirect = null;
+  try {
+    redirect = await msalApp.handleRedirectPromise();
+  } catch(e) {
+    // Stale or mismatched redirect state — clear MSAL cache and show sign-in.
+    console.warn('[AuditDash] handleRedirectPromise error (clearing cache):', e.message);
+    try { msalApp.clearCache(); } catch(_) {}
+    return false;
+  }
+  if (redirect) {
+    graphToken = redirect.accessToken;
+    userName = redirect.account?.name || redirect.account?.username || 'Signed in';
+    document.getElementById('user-name').textContent = userName;
+    document.getElementById('signin-screen').classList.add('hidden');
+    await loadAndRender();
+    return true;
+  }
+  const accounts = msalApp.getAllAccounts();
+  if (accounts.length > 0) {
+    try {
+      const r = await msalApp.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: accounts[0] });
+      graphToken = r.accessToken;
+      userName = accounts[0].name || accounts[0].username;
+      document.getElementById('user-name').textContent = userName;
+      return true;
+    } catch(e) { graphToken = null; }
+  }
+  return false;
+}
+
+async function doSignIn() {
+  const btn = document.getElementById('signin-btn');
+  const errEl = document.getElementById('signin-error');
+  btn.disabled = true; btn.textContent = 'Signing in…'; errEl.classList.remove('show');
+  try {
+    // Use redirect flow — avoids block_nested_popups errors
+    await msalApp.acquireTokenRedirect({ scopes: GRAPH_SCOPES });
+    // Page will reload; initMsal handles the redirect result on return
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 21 21" fill="none"><rect width="10" height="10" fill="#F25022"/><rect x="11" width="10" height="10" fill="#7FBA00"/><rect y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg> Sign in with Microsoft';
+    let msg = e.message || 'Sign in failed.';
+    if (e.errorCode === 'user_cancelled') msg = 'Sign-in was cancelled.';
+    errEl.textContent = msg; errEl.classList.add('show');
+  }
+}
+
+async function getToken() {
+  const accounts = msalApp.getAllAccounts();
+  if (!accounts.length) throw new Error('Not signed in. Please refresh and sign in.');
+  try {
+    const r = await msalApp.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: accounts[0] });
+    graphToken = r.accessToken;
+    return r.accessToken;
+  } catch(e) {
+    // Popup blocked in some contexts — use redirect
+    await msalApp.acquireTokenRedirect({ scopes: GRAPH_SCOPES });
+    throw new Error('Redirecting for authentication…');
+  }
+}
+
+// ════════════════════════════════════════════════
+// MICROSOFT GRAPH API
+// ════════════════════════════════════════════════
+async function graphFetch(url, opts = {}) {
+  const token = await getToken();
+  const fullUrl = url.startsWith('http') ? url : GRAPH_BASE + url;
+  const r = await fetch(fullUrl, {
+    ...opts,
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', Accept: 'application/json', ...(opts.headers || {}) }
+  });
+  if (!r.ok && r.status !== 204) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Graph API error HTTP ${r.status} — ${url.split('?')[0]}`);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+async function getSiteId() {
+  if (graphSiteId) return graphSiteId;
+  const d = await graphFetch(`/sites/${SP_SITE_HOST}:${SP_SITE_PATH}`);
+  graphSiteId = d.id;
+  return graphSiteId;
+}
+
+async function spGet(listName, year) {
+  const siteId = await getSiteId();
+  let url = `/sites/${siteId}/lists/${listName}/items?$expand=fields&$select=id,fields&$top=5000`;
+  let items = [];
+  while (url) { const d = await graphFetch(url); items = items.concat(d.value || []); url = d['@odata.nextLink'] || null; }
+  return year ? items.filter(x => x.fields?.Year === year) : items;
+}
+async function spPost(listName, fields) {
+  const siteId = await getSiteId();
+  return graphFetch(`/sites/${siteId}/lists/${listName}/items`, { method:'POST', body:JSON.stringify({fields}) });
+}
+async function spPatch(listName, itemId, fields) {
+  const siteId = await getSiteId();
+  await graphFetch(`/sites/${siteId}/lists/${listName}/items/${itemId}`, { method:'PATCH', body:JSON.stringify({fields}) });
+}
+async function spDelete(listName, itemId) {
+  const siteId = await getSiteId();
+  await graphFetch(`/sites/${siteId}/lists/${listName}/items/${itemId}`, { method:'DELETE' });
+}
+
+// ── Field converters ──
+function toSpFields(tab, item, year) {
+  const map = F[tab] || {};
+  const out = {};
+  if (year) out.Year = year;
+  for (const [ak, sk] of Object.entries(map)) { out[sk] = spWriteValue(ak, item[ak], item); }
+  return out;
+}
+function fromSpItem(tab, sp) {
+  const map = F[tab] || {};
+  const fields = sp.fields || {};
+  const item = { _spId: sp.id, id: sp.id };
+  for (const [ak, sk] of Object.entries(map)) { item[ak] = spReadValue(ak, fields[sk]); }
+  return item;
+}
+
+
+// ════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════
+function fmt(d){ if(!d)return ''; const p=d.substring?d.substring(0,10):String(d).substring(0,10); return p||''; }
+function today(){ return new Date().toISOString().substring(0,10); }
+function isLate(dueDate){ return dueDate && dueDate < today(); }
+function isNew(uploadedDate, auditStart){ return auditStart && uploadedDate && uploadedDate >= auditStart; }
+function pct(items){ if(!items.length)return 0; const done=items.filter(x=>x.status==='Completed').length; return Math.round(done/items.length*100); }
+let _toastTimer;
+function showToast(msg, type=''){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='show'+(type?' '+type:'');
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>el.className='',3000);
+}
+function showLoad(msg, sub=''){
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  document.getElementById('loading-msg').textContent=msg||'Loading…';
+  document.getElementById('loading-sub-msg').textContent=sub||'';
+  document.getElementById('loading-dismiss').style.display='none';
+}
+function hideLoad(){ document.getElementById('loading-overlay').classList.add('hidden'); }
+function openM(id){ document.getElementById(id).classList.add('open'); }
+function closeM(id){ document.getElementById(id).classList.remove('open'); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') document.querySelectorAll('.ov.open').forEach(el=>el.classList.remove('open')); });
+
+// ════════════════════════════════════════════════
+// YEAR MANAGEMENT
+// ════════════════════════════════════════════════
+async function loadYears() {
+  const rows = await spGet(LISTS.config);
+  yearConfigs = {};
+  rows.forEach(r=>{ const c=fromSpItem('config',r); yearConfigs[c.id]=c; });
+  const sel=document.getElementById('year-sel');
+  sel.innerHTML='';
+  const years=Object.keys(yearConfigs).sort((a,b)=>b-a);
+  years.forEach(y=>{ const o=document.createElement('option');o.value=y;o.textContent=yearConfigs[y].label||y;sel.appendChild(o); });
+  if(!currentYear || !yearConfigs[currentYear]) currentYear=years[0]||'';
+  sel.value=currentYear;
+  updateDeadlinePill();
+  // populate ny-from
+  const nyFrom=document.getElementById('ny-from');
+  nyFrom.innerHTML='<option value="">Standard Template</option>';
+  years.forEach(y=>{ const o=document.createElement('option');o.value=y;o.textContent=yearConfigs[y].label||y;nyFrom.appendChild(o); });
+}
+function updateDeadlinePill(){
+  const cfg=yearConfigs[currentYear];
+  const pill=document.getElementById('dl-pill');
+  const valEl=document.getElementById('dl-val');
+  const lblEl=document.getElementById('dl-lbl');
+  if(!cfg||!cfg.deadline){ valEl.textContent='—';lblEl.textContent='days to deadline';pill.className='deadline-pill';return; }
+  const diff=Math.ceil((new Date(cfg.deadline)-new Date())/86400000);
+  valEl.textContent=diff;
+  lblEl.textContent='days to deadline';
+  pill.className='deadline-pill'+(diff<0?' urgent':diff<=14?' warn':'');
+}
+async function switchYear(year){
+  currentYear=year;
+  updateDeadlinePill();
+  await loadAllTabs();
+}
+function openYearCfg(){
+  const cfg=yearConfigs[currentYear]||{};
+  document.getElementById('yc-ttl').textContent=cfg.label||currentYear;
+  document.getElementById('yc-label').value=cfg.label||'';
+  document.getElementById('yc-firm').value=cfg.firm||'';
+  document.getElementById('yc-fyend').value=cfg.fyEnd||'';
+  document.getElementById('yc-deadline').value=cfg.deadline||'';
+  document.getElementById('yc-auditstart').value=cfg.auditStart||'';
+  document.getElementById('yc-shadower').value=cfg.shadower||'';
+  openM('m-year-cfg');
+}
+async function saveYearCfg(){
+  const cfg=yearConfigs[currentYear];
+  if(!cfg){showToast('No year selected','err');return;}
+  const fields={
+    Label:document.getElementById('yc-label').value,
+    Firm:document.getElementById('yc-firm').value,
+    FYEnd:document.getElementById('yc-fyend').value||null,
+    Deadline:document.getElementById('yc-deadline').value||null,
+    AuditStart:document.getElementById('yc-auditstart').value||null,
+    Shadower:document.getElementById('yc-shadower').value||null,
+  };
+  try{
+    showLoad('Saving year settings…');
+    await spPatch(LISTS.config,cfg._spId,fields);
+    await loadYears();
+    closeM('m-year-cfg'); showToast('Year settings saved','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+async function addYear(){
+  const id=document.getElementById('ny-id').value.trim();
+  const label=document.getElementById('ny-label').value.trim();
+  if(!id||!label){showToast('Year ID and Label are required','err');return;}
+  if(yearConfigs[id]){showToast('Year '+id+' already exists','err');return;}
+  const fields={
+    Year:id, Label:label,
+    FYEnd:document.getElementById('ny-fyend').value||null,
+    Deadline:document.getElementById('ny-deadline').value||null,
+    AuditStart:document.getElementById('ny-auditstart').value||null,
+    Shadower:document.getElementById('ny-shadower').value||null,
+    Firm:document.getElementById('ny-firm').value||'TPCSA',
+  };
+  try{
+    showLoad('Creating year '+id+'…');
+    await spPost(LISTS.config,fields);
+    const fromYear=document.getElementById('ny-from').value;
+    if(fromYear){
+      const src=await spGet(LISTS.planning,fromYear);
+      for(const r of src){
+        const it=fromSpItem('planning',r);
+        it.status='Not Started'; it.uploaded=''; it.docLink=''; it.notes=''; it.comments='';
+        await spPost(LISTS.planning,toSpFields('planning',it,id));
+      }
+    } else { await seedStandardChecklist(id); }
+    if(document.getElementById('ny-recs').checked){
+      const recs=await spGet(LISTS.recommendations,currentYear);
+      const due=document.getElementById('ny-deadline').value||'';
+      for(const r of recs){
+        const it=fromSpItem('recommendations',r);
+        const pItem={desc:it.weakness||it.recommendation,dueDate:due,status:'Not Started',responsible:it.responsible||''};
+        await spPost(LISTS.planning,toSpFields('planning',pItem,id));
+      }
+    }
+    currentYear=id; await loadYears(); await loadAllTabs();
+    closeM('m-add-year'); showToast('Year '+id+' created','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+async function seedYear(){
+  if(!currentYear)return;
+  if(!confirm('Seed the standard StudyTrust checklist for '+currentYear+'? Existing items are not affected.'))return;
+  showLoad('Seeding checklist…');
+  try{ await seedStandardChecklist(currentYear); await loadAllTabs(); showToast('Checklist seeded','ok'); }
+  catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+async function seedStandardChecklist(year){
+  const planningItems=[
+    {desc:'Governance and Board — Minutes and resolutions',docName:'Governance and Board'},
+    {desc:'Narrative and Annual Report — Draft narrative report',docName:'Narrative and Annual Report'},
+    {desc:'Contracts and Agreements — Service level agreements',docName:'Contracts and Agreements'},
+    {desc:'Finance Narratives — Management discussion and analysis',docName:'Finance Narratives'},
+    {desc:'Management Accounts — Detailed management accounts',docName:'Management Accounts'},
+    {desc:'Bursaries and Revenue — Bursary agreements and schedules',docName:'Bursaries and Revenue'},
+    {desc:'Insurance — Insurance schedule and cover confirmations',docName:'Insurance'},
+    {desc:'Employment Compliance — Employment contracts and HR records',docName:'Employment Compliance'},
+    {desc:'Statutory Compliance — CIPC, SARS compliance certificates',docName:'Statutory Compliance'},
+    {desc:'Budget and Going Concern — Board-approved budget',docName:'Budget and Going Concern'},
+    {desc:'Risk and Control Framework — Risk register',docName:'Risk and Control Framework'},
+  ];
+  const executionItems=[
+    {desc:'Bank and Investment Statements — Monthly bank statements',docName:'Bank and Investment Statements'},
+    {desc:'Procurement and Payments — Payment requisitions and invoices',docName:'Procurement and Payments'},
+    {desc:'Payroll and Personnel — Payroll reconciliation',docName:'Payroll and Personnel'},
+    {desc:'Assets and Financials — Fixed asset register',docName:'Assets and Financials'},
+    {desc:'Funder Agreements — Donor agreements and compliance reports',docName:'Funder Agreements'},
+    {desc:'IT Systems and Access — IT controls and access review',docName:'IT Systems and Access'},
+    {desc:'Related Parties — Related party transactions listing',docName:'Related Parties'},
+  ];
+  for(const it of planningItems){ await spPost(LISTS.planning,toSpFields('planning',{...it,status:'Not Started'},year)); }
+  for(const it of executionItems){ await spPost(LISTS.execution,toSpFields('execution',{...it,status:'Not Started'},year)); }
+}
+
+// ════════════════════════════════════════════════
+// DATA LOADING
+// ════════════════════════════════════════════════
+async function loadAllTabs(){
+  showLoad('Loading '+currentYear+' data…','Fetching from SharePoint…');
+  try{
+    [planItems,execItems,recItems,sampItems,teamsItems,regItems,reqItems,rlItems,questItems] = await Promise.all([
+      spGet(LISTS.planning,currentYear).then(r=>r.map(x=>fromSpItem('planning',x))),
+      spGet(LISTS.execution,currentYear).then(r=>r.map(x=>fromSpItem('execution',x))),
+      spGet(LISTS.recommendations,currentYear).then(r=>r.map(x=>fromSpItem('recommendations',x))),
+      spGet(LISTS.sampling,currentYear).then(r=>r.map(x=>fromSpItem('sampling',x))),
+      spGet(LISTS.teams,currentYear).then(r=>r.map(x=>fromSpItem('teams',x))),
+      spGet(LISTS.register,currentYear).then(r=>r.map(x=>fromSpItem('register',x))),
+      spGet(LISTS.auditorRequests,currentYear).then(r=>r.map(x=>fromSpItem('auditorRequests',x))),
+      spGet(LISTS.responseLinks,currentYear).then(r=>r.map(x=>fromSpItem('responseLinks',x))),
+      spGet(LISTS.questions,currentYear).then(r=>r.map(x=>fromSpItem('questions',x))),
+    ]);
+    if(hasPersonnelAccess){ persItems=(await spGet(LISTS.personnel)).map(x=>fromSpItem('personnel',x)); }
+    renderAll();
+    const hasSeedBanner=!planItems.length&&!execItems.length;
+    document.getElementById('seed-banner').classList.toggle('show',hasSeedBanner);
+  }catch(e){showToast('Load error: '+e.message,'err');}finally{hideLoad();}
+}
+
+async function loadAndRender(){
+  showLoad('Initialising…','Connecting to SharePoint…');
+  try{
+    await detectPersonnelAccess();
+    await loadYears();
+    await loadAllTabs();
+    buildTabBar();
+    loadWebhookFromStorage();
+    buildNotifications();
+  }catch(e){showToast('Init error: '+e.message,'err');hideLoad();}
+}
+
+async function detectPersonnelAccess(){
+  try{
+    const token=await getToken();
+    const me=await graphFetch('/me');
+    // Use transitiveMemberOf so nested group membership is also detected
+    const groups=await graphFetch('/me/transitiveMemberOf?$top=999');
+    hasPersonnelAccess=(groups.value||[]).some(g=>(g.displayName||'').includes('HR-Authorised-Personnel'));
+  }catch(e){ hasPersonnelAccess=false; }
+}
+
+
+// ════════════════════════════════════════════════
+// ROLE MANAGEMENT
+// ════════════════════════════════════════════════
+function setRole(role){
+  userRole=role;
+  document.getElementById('r-admin').classList.toggle('active',role==='admin');
+  document.getElementById('r-auditor').classList.toggle('active',role==='auditor');
+  const banner=document.getElementById('role-banner');
+  const badge=document.getElementById('role-badge');
+  if(role==='admin'){
+    banner.className='admin-mode'; banner.textContent='Admin Mode — Changes save live to SharePoint';
+    badge.className='admin'; badge.textContent='Admin';
+  } else {
+    banner.className='auditor-mode'; banner.textContent='Auditor View — Read only, except submitting new Questions';
+    badge.className='auditor'; badge.textContent='Auditor';
+  }
+  const qNote=document.getElementById('q-auditor-note');
+  if(qNote) qNote.style.display=(role==='auditor')?'inline':'none';
+  buildTabBar(); renderAll();
+}
+
+// ════════════════════════════════════════════════
+// TAB BAR
+// ════════════════════════════════════════════════
+function buildTabBar(){
+  const bar=document.getElementById('tab-bar');
+  bar.innerHTML='';
+  const reqCount=reqItems.filter(x=>x.status==='Open'||x.status==='In Progress').length;
+  const linkCount=rlItems.filter(x=>x.requestId==='GENERAL').length;
+  const adminTabs=[
+    {id:'dashboard', label:'📊 Dashboard'},
+    {id:'planning',   label:'📋 Planning',  count:planItems.length},
+    {id:'execution',  label:'📁 Execution', count:execItems.length},
+    {id:'recommendations', label:'💡 Recommendations', count:recItems.length},
+    {id:'sampling',   label:'🔬 Sampling'},
+    {id:'teams',      label:'👥 Teams Access'},
+    {id:'register',   label:'📝 Register'},
+    {id:'aud-requests', label:'📨 Auditor Requests', count:reqCount, reqStyle:true},
+    {id:'links',      label:'🔗 Response Links', count:linkCount},
+    {id:'questions',  label:'❓ Questions',  count:questItems.length},
+  ];
+  if(hasPersonnelAccess) adminTabs.push({id:'personnel', label:'🔒 Personnel', count:persItems.length});
+  const auditorTabs=[
+    {id:'aud-overview',    label:'📊 Overview'},
+    {id:'aud-docs',        label:'📄 Documents'},
+    {id:'aud-my-requests', label:'📨 My Requests'},
+    {id:'links',           label:'🔗 Response Links', count:linkCount},
+    {id:'questions',       label:'❓ Questions', count:questItems.length},
+  ];
+  const tabs=userRole==='admin'?adminTabs:auditorTabs;
+  tabs.forEach(t=>{
+    const btn=document.createElement('button');
+    btn.className='tab-btn'; btn.dataset.tab=t.id;
+    let inner=t.label;
+    if(t.count!=null){ inner+=` <span class="tc${t.reqStyle?' req':''}">${t.count}</span>`; }
+    btn.innerHTML=inner;
+    btn.onclick=()=>activateTab(t.id);
+    bar.appendChild(btn);
+  });
+  // activate first tab or keep current if valid
+  const active=document.querySelector('.tab-btn.active');
+  if(!active) activateTab(tabs[0].id);
+}
+
+function activateTab(id){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  const sec=document.getElementById('sec-'+id);
+  if(sec){ sec.classList.add('active'); }
+  const btn=document.querySelector(`.tab-btn[data-tab="${id}"]`);
+  if(btn){ btn.classList.add('active'); }
+  if(id==='dashboard') renderDashboard();
+  else if(id==='planning') renderTab('planning');
+  else if(id==='execution') renderTab('execution');
+  else if(id==='recommendations') renderTab('recommendations');
+  else if(id==='sampling') renderTab('sampling');
+  else if(id==='teams') renderTab('teams');
+  else if(id==='register') renderTab('register');
+  else if(id==='aud-requests') renderAudRequests();
+  else if(id==='questions') renderTab('questions');
+  else if(id==='personnel') renderTab('personnel');
+  else if(id==='links') renderTab('links');
+  else if(id==='aud-overview') renderAudOverview();
+  else if(id==='aud-docs') renderAudDocs();
+  else if(id==='aud-my-requests') renderAudMyRequests();
+}
+
+function renderAll(){
+  buildTabBar();
+  const activeTab=document.querySelector('.tab-btn.active');
+  const id=activeTab?activeTab.dataset.tab:'dashboard';
+  activateTab(id);
+  buildNotifications();
+}
+
+// ════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════
+function renderDashboard(){
+  const cfg=yearConfigs[currentYear]||{};
+  const allItems=[...planItems,...execItems];
+  const done=allItems.filter(x=>x.status==='Completed').length;
+  const total=allItems.length;
+  const att=allItems.filter(x=>x.status==='Requires Attention').length;
+  const late=allItems.filter(x=>isLate(x.dueDate)&&x.status!=='Completed').length;
+  const openReq=reqItems.filter(x=>x.status==='Open'||x.status==='In Progress').length;
+  // Cards
+  const cards=[
+    {label:'Total Items',     val:total,    sub:'all phases',    cls:'c-st'},
+    {label:'Completed',       val:done,     sub:pct(allItems)+'%', cls:'c-ok'},
+    {label:'Req. Attention',  val:att,      sub:'need action',   cls:'c-att'},
+    {label:'Late',            val:late,     sub:'past due',      cls:'c-late'},
+    {label:'Audit Requests',  val:openReq,  sub:'open/in progress', cls:'c-aud'},
+    {label:'Questions',       val:questItems.filter(x=>x.status!=='Answered').length, sub:'unanswered', cls:'c-prog'},
+  ];
+  document.getElementById('dash-cards').innerHTML=cards.map(c=>`<div class="card ${c.cls}"><div class="cl">${c.label}</div><div class="cv">${c.val}</div><div class="cs">${c.sub}</div></div>`).join('');
+  // Overall progress
+  const oPct=total?pct(allItems):0;
+  document.getElementById('ov-pct').textContent=oPct+'%';
+  document.getElementById('ov-fill').style.width=oPct+'%';
+  // Phase bars
+  const phases=[{label:'Planning',items:planItems},{label:'Execution',items:execItems},{label:'Recommendations',items:recItems}];
+  document.getElementById('phase-bars').innerHTML=phases.map(p=>{
+    const pp=p.items.length?pct(p.items):0;
+    return `<div class="pr"><span class="pn">${p.label}</span><div class="pb2"><div class="pf2" style="width:${pp}%;background:var(--st)"></div></div><span class="pp">${pp}%</span></div>`;
+  }).join('');
+  // Timeline
+  const tl=[];
+  if(cfg.fyEnd) tl.push({label:'FY End',date:cfg.fyEnd});
+  if(cfg.shadower) tl.push({label:'Shadower Deadline',date:cfg.shadower});
+  if(cfg.deadline) tl.push({label:'Audit Deadline',date:cfg.deadline});
+  tl.sort((a,b)=>a.date<b.date?-1:1);
+  const td=today();
+  document.getElementById('timeline').innerHTML=tl.map(t=>{
+    const cls=t.date<td?'done':t.date===td?'act':'fut';
+    const diff=Math.ceil((new Date(t.date)-new Date(td))/86400000);
+    const sub=diff<0?`${Math.abs(diff)}d ago`:diff===0?'Today':`in ${diff}d`;
+    return `<div class="tli"><div class="tld ${cls}"></div><div><div class="tlt">${t.label}</div><div class="tldt" style="color:${diff<0?'var(--att)':'#888'}">${fmt(t.date)} &nbsp; ${sub}</div></div></div>`;
+  }).join('')||'<div style="color:#aaa;font-size:12px">No deadlines configured.</div>';
+  // Attention list
+  const attItems=allItems.filter(x=>x.status==='Requires Attention').slice(0,8);
+  document.getElementById('att-list').innerHTML=attItems.map(x=>`<div class="ni"><div class="ni-title">${x.desc||x.weakness||''}</div><div class="ni-meta">${x.responsible||''} · due ${fmt(x.dueDate)||'—'}</div></div>`).join('')||'<div style="color:#aaa;font-size:12px;padding:6px 0">No items requiring attention.</div>';
+  // Late list
+  const lateItems=allItems.filter(x=>isLate(x.dueDate)&&x.status!=='Completed').slice(0,8);
+  document.getElementById('late-list').innerHTML=lateItems.map(x=>`<div class="ni"><span class="bl">LATE</span> <span class="ni-title" style="display:inline">${x.desc||x.weakness||''}</span><div class="ni-meta">${x.responsible||''} · due ${fmt(x.dueDate)}</div></div>`).join('')||'<div style="color:#aaa;font-size:12px;padding:6px 0">No late items.</div>';
+}
+
+// ════════════════════════════════════════════════
+// TABLE RENDERING
+// ════════════════════════════════════════════════
+function renderTab(tab, filterFn){
+  const items=filterFn?getItems(tab).filter(filterFn):getItems(tab);
+  const body=document.getElementById('body-'+tab);
+  if(!body)return;
+  if(tab==='planning'||tab==='execution') renderPlanExec(tab,items,body);
+  else if(tab==='recommendations') renderRec(items,body);
+  else if(tab==='sampling') renderSampling(items,body);
+  else if(tab==='teams') renderTeams(items,body);
+  else if(tab==='register') renderRegister(items,body);
+  else if(tab==='questions') renderQuestions(items,body);
+  else if(tab==='personnel') renderPersonnel(items,body);
+  else if(tab==='links') renderLinks(items,body);
+  // update pct labels
+  if(tab==='planning'){ const el=document.getElementById('plan-pct');if(el)el.textContent=pct(planItems)+'%'; }
+  if(tab==='execution'){ const el=document.getElementById('exec-pct');if(el)el.textContent=pct(execItems)+'%'; }
+  if(tab==='recommendations'){ const el=document.getElementById('rec-pct');if(el)el.textContent=pct(recItems)+'%'; }
+}
+
+function statusSel(val,tab,id,field='status'){
+  const opts=(tab==='auditorRequests'?REQ_STATUSES:STATUSES);
+  const cls='sb sb-'+val.replace(/\s/g,'-');
+  if(userRole==='auditor') return `<span class="${cls}">${val||'—'}</span>`;
+  return `<select class="ie is sb ${cls}" onchange="quickSave('${tab}','${id}','${field}',this.value,this)">${opts.map(s=>`<option${s===val?' selected':''}>${s}</option>`).join('')}</select>`;
+}
+function textIn(val,tab,id,field,cls=''){
+  if(userRole==='auditor') return `<span>${val||''}</span>`;
+  if(cls==='dc'){
+    // Textarea for description/weakness/recommendation — wraps to multiple lines like Governance dashboard
+    const esc=(val||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<textarea class="ie ita" rows="2" onchange="quickSave('${tab}','${id}','${field}',this.value,this)" onblur="quickSave('${tab}','${id}','${field}',this.value,this)">${esc}</textarea>`;
+  }
+  const extra=cls&&cls!=='it'?' '+cls:'';
+  return `<input class="ie it${extra}" value="${(val||'').replace(/"/g,'&quot;')}" onchange="quickSave('${tab}','${id}','${field}',this.value,this)" onblur="quickSave('${tab}','${id}','${field}',this.value,this)">`;
+}
+function dateIn(val,tab,id,field){
+  if(userRole==='auditor') return `<span>${fmt(val)}</span>`;
+  return `<input type="date" class="ie id" value="${fmt(val)||''}" onchange="quickSave('${tab}','${id}','${field}',this.value,this)">`;
+}
+function docCatSel(val,tab,id){
+  if(userRole==='auditor') return `<span>${val||''}</span>`;
+  let opts=`<option value=""></option>`+DOC_CATEGORIES.map(c=>`<option${c.label===val?' selected':''}>${c.label}</option>`).join('');
+  return `<select class="ie is" onchange="quickSave('${tab}','${id}','docName',this.value,this)">${opts}</select>`;
+}
+function uploadBtn(item,tab){
+  if(userRole==='auditor') return '';
+  const link=item.docLink?`<a class="lb" href="${item.docLink}" target="_blank">🔗 Open</a>`:`<span class="lb empty">No link</span>`;
+  return `<div class="ul-wrap">${link}<button class="btn" style="padding:2px 6px;font-size:10px" onclick="triggerUpload('${tab}','${item.id}',false)">📎 Upload</button><button class="btn" style="padding:2px 6px;font-size:10px" title="Multi-file folder upload" onclick="triggerUpload('${tab}','${item.id}',true)">📁 Multi</button></div>`;
+}
+function delBtn(tab,id){ if(userRole==='auditor')return ''; return `<button class="btn" style="padding:2px 5px;font-size:10px;color:var(--att)" onclick="deleteRow('${tab}','${id}')">✕</button>`; }
+
+function renderPlanExec(tab,items,body){
+  const cfg=yearConfigs[currentYear]||{};
+  body.innerHTML=items.map((it,i)=>{
+    const late=isLate(it.dueDate)&&it.status!=='Completed';
+    const isnew=isNew(it.uploaded,cfg.auditStart);
+    return `<tr class="${late?'rl':isnew?'rn':''}">
+      <td class="n">${i+1}</td>
+      <td class="dc">${textIn(it.desc,tab,it.id,'desc','dc')}</td>
+      <td>${dateIn(it.dueDate,tab,it.id,'dueDate')}</td>
+      <td>${dateIn(it.uploaded,tab,it.id,'uploaded')}</td>
+      <td>${statusSel(it.status,tab,it.id)}</td>
+      <td>${textIn(it.responsible,tab,it.id,'responsible','itn')}</td>
+      <td>${textIn(it.shadower,tab,it.id,'shadower','itn')}</td>
+      <td>${docCatSel(it.docName,tab,it.id)}</td>
+      <td>${uploadBtn(it,tab)}</td>
+      <td class="dc">${textIn(it.notes,tab,it.id,'notes','dc')}</td>
+      <td class="dc">${textIn(it.comments,tab,it.id,'comments','dc')}${delBtn(tab,it.id)}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="11" style="text-align:center;color:#aaa;padding:14px;font-size:12px">No items yet. Click + Add to create one.</td></tr>`;
+}
+
+function renderRec(items,body){
+  body.innerHTML=items.map((it,i)=>`<tr>
+    <td class="n">${i+1}</td>
+    <td class="dc">${textIn(it.weakness,'recommendations',it.id,'weakness','dc')}</td>
+    <td class="dc">${textIn(it.recommendation,'recommendations',it.id,'recommendation','dc')}</td>
+    <td>${dateIn(it.dueDate,'recommendations',it.id,'dueDate')}</td>
+    <td>${statusSel(it.status,'recommendations',it.id)}</td>
+    <td>${textIn(it.responsible,'recommendations',it.id,'responsible','it')}</td>
+    <td>${textIn(it.shadower,'recommendations',it.id,'shadower','it')}</td>
+    <td>${docCatSel(it.docName,'recommendations',it.id)}</td>
+    <td style="white-space:nowrap">${uploadBtn(it,'recommendations')}</td>
+    <td>${textIn(it.comments,'recommendations',it.id,'comments','it')}${delBtn('recommendations',it.id)}</td>
+  </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px;font-size:12px">No recommendations yet.</td></tr>`;
+}
+
+function renderSampling(items,body){
+  body.innerHTML=items.map((it,i)=>`<tr>
+    <td class="n">${i+1}</td>
+    <td>${textIn(it.desc,'sampling',it.id,'desc','it')}</td>
+    <td>${textIn(it.requestedBy,'sampling',it.id,'requestedBy','it')}</td>
+    <td>${dateIn(it.dateRequested,'sampling',it.id,'dateRequested')}</td>
+    <td>${dateIn(it.uploaded,'sampling',it.id,'uploaded')}</td>
+    <td>${statusSel(it.status,'sampling',it.id)}</td>
+    <td>${textIn(it.responsible,'sampling',it.id,'responsible','it')}</td>
+    <td>${docCatSel(it.docName,'sampling',it.id)}</td>
+    <td style="white-space:nowrap">${uploadBtn(it,'sampling')}</td>
+    <td>${textIn(it.notes,'sampling',it.id,'notes','it')}${delBtn('sampling',it.id)}</td>
+  </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px">No sampling items.</td></tr>`;
+}
+
+function renderTeams(items,body){
+  body.innerHTML=items.map((it,i)=>`<tr>
+    <td class="n">${i+1}</td>
+    <td>${textIn(it.email,'teams',it.id,'email','it')}</td>
+    <td>${textIn(it.requestedBy,'teams',it.id,'requestedBy','it')}</td>
+    <td>${dateIn(it.dateRequested,'teams',it.id,'dateRequested')}</td>
+    <td>${dateIn(it.dateConnected,'teams',it.id,'dateConnected')}</td>
+    <td>${statusSel(it.status,'teams',it.id)}</td>
+    <td>${textIn(it.responsible,'teams',it.id,'responsible','it')}</td>
+    <td>${textIn(it.remarks,'teams',it.id,'remarks','it')}${delBtn('teams',it.id)}</td>
+  </tr>`).join('')||`<tr><td colspan="8" style="text-align:center;color:#aaa;padding:14px">No entries.</td></tr>`;
+}
+
+function renderRegister(items,body){
+  body.innerHTML=items.map((it,i)=>`<tr>
+    <td class="n">${i+1}</td>
+    <td>${dateIn(it.dateRequested,'register',it.id,'dateRequested')}</td>
+    <td class="dc">${textIn(it.doc,'register',it.id,'doc','it')}</td>
+    <td>${textIn(it.requester,'register',it.id,'requester','it')}</td>
+    <td>${textIn(it.requestedFrom,'register',it.id,'requestedFrom','it')}</td>
+    <td>${textIn(it.submitter,'register',it.id,'submitter','it')}</td>
+    <td>${dateIn(it.dateSubmitted,'register',it.id,'dateSubmitted')}</td>
+    <td>${textIn(it.docName,'register',it.id,'docName','it')}</td>
+    <td>${it.docLink?`<a class="lb" href="${it.docLink}" target="_blank">🔗 Open</a>`:`<span class="lb empty">—</span>`}</td>
+    <td>${textIn(it.comment,'register',it.id,'comment','it')}${delBtn('register',it.id)}</td>
+  </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px">No entries.</td></tr>`;
+}
+
+function renderQuestions(items,body){
+  const qStatuses=['Open','In Progress','Answered','Referred'];
+  const qSources=['Anticipated','Prior Year','Auditor'];
+  body.innerHTML=items.map((it,i)=>{
+    const sSel=userRole==='auditor'?`<span>${it.status||''}</span>`:`<select class="ie is" onchange="quickSave('questions','${it.id}','status',this.value,this)">${qStatuses.map(s=>`<option${s===it.status?' selected':''}>${s}</option>`).join('')}</select>`;
+    const srcSel=userRole==='auditor'?`<span>${it.source||''}</span>`:`<select class="ie is" onchange="quickSave('questions','${it.id}','source',this.value,this)">${qSources.map(s=>`<option${s===it.source?' selected':''}>${s}</option>`).join('')}</select>`;
+    const ansCell=userRole==='auditor'
+      ?`<div style="white-space:pre-wrap">${(it.answer||'').replace(/</g,'&lt;')||'<span style="color:#aaa">Pending response…</span>'}</div>`
+      :`<textarea class="ie" style="min-height:40px;width:100%;resize:vertical" onchange="quickSave('questions','${it.id}','answer',this.value,this)">${(it.answer||'').replace(/</g,'&lt;')}</textarea>`;
+    return `<tr>
+      <td class="n">${i+1}</td>
+      <td class="dc">${textIn(it.desc,'questions',it.id,'desc','dc')}</td>
+      <td>${srcSel}</td>
+      <td>${sSel}</td>
+      <td>${textIn(it.responsible,'questions',it.id,'responsible','it')}</td>
+      <td>${ansCell}</td>
+      <td>${textIn(it.notes,'questions',it.id,'notes','it')}${delBtn('questions',it.id)}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="7" style="text-align:center;color:#aaa;padding:14px">No questions yet.</td></tr>`;
+}
+
+function renderPersonnel(items,body){
+  const accessOpts=['Internal Only','Grant Auditor Access'];
+  body.innerHTML=items.map((it,i)=>{
+    const accSel=`<select class="ie is" onchange="quickSave('personnel','${it.id}','accessLevel',this.value,this)">${accessOpts.map(s=>`<option${s===it.accessLevel?' selected':''}>${s}</option>`).join('')}</select>`;
+    return `<tr>
+      <td class="n">${i+1}</td>
+      <td class="dc">${textIn(it.desc,'personnel',it.id,'desc','it')}</td>
+      <td>${dateIn(it.dueDate,'personnel',it.id,'dueDate')}</td>
+      <td>${dateIn(it.uploaded,'personnel',it.id,'uploaded')}</td>
+      <td>${statusSel(it.status,'personnel',it.id)}</td>
+      <td>${textIn(it.responsible,'personnel',it.id,'responsible','it')}</td>
+      <td>${docCatSel(it.docName,'personnel',it.id)}</td>
+      <td style="white-space:nowrap">${uploadBtn(it,'personnel')}</td>
+      <td>${accSel}${delBtn('personnel',it.id)}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="9" style="text-align:center;color:#aaa;padding:14px">No personnel documents.</td></tr>`;
+}
+
+function renderLinks(items,body){
+  const adminActions=document.getElementById('links-admin-actions');
+  if(adminActions) adminActions.style.display=userRole==='admin'?'':'none';
+  const general=items.filter(x=>x.requestId==='GENERAL');
+  body.innerHTML=general.map((it,i)=>{
+    let linkCell;
+    if(userRole==='admin'){
+      linkCell=textIn(it.docLink,'links',it.id,'docLink','it');
+    } else {
+      const url=(it.docLink||'').replace(/"/g,'&quot;');
+      const label=(it.docLink||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      linkCell=it.docLink?`<a href="${url}" target="_blank" rel="noopener">${label}</a>`:'';
+    }
+    return `<tr>
+      <td class="n">${i+1}</td>
+      <td class="dc">${textIn(it.docName,'links',it.id,'docName','it')}</td>
+      <td>${linkCell}</td>
+      <td class="dc">${textIn(it.notes,'links',it.id,'notes','it')}</td>
+      <td>${delBtn('links',it.id)}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="5" style="text-align:center;color:#aaa;padding:14px">No reference links added yet.</td></tr>`;
+}
+
+
+// ════════════════════════════════════════════════
+// AUDITOR VIEW RENDERING
+// ════════════════════════════════════════════════
+function renderAudOverview(){
+  const cfg=yearConfigs[currentYear]||{};
+  const allDocs=[...planItems,...execItems].filter(x=>x.docLink&&x.status==='Completed');
+  const openReqs=reqItems.filter(x=>x.status!=='Resolved'&&x.status!=='Closed');
+  const cards=[
+    {label:'Documents Ready',val:allDocs.length,cls:'c-ok'},
+    {label:'Open Requests',val:openReqs.length,cls:'c-aud'},
+    {label:'Questions',val:questItems.filter(x=>x.status==='Answered').length,sub:'answered',cls:'c-st'},
+  ];
+  document.getElementById('aud-cards').innerHTML=cards.map(c=>`<div class="card ${c.cls}"><div class="cl">${c.label}</div><div class="cv">${c.val}</div><div class="cs">${c.sub||''}</div></div>`).join('');
+  // new docs banner
+  const newDocs=[...planItems,...execItems].filter(x=>isNew(x.uploaded,cfg.auditStart)&&x.docLink);
+  const nb=document.getElementById('new-banner');
+  nb.style.display=newDocs.length?'block':'none';
+  document.getElementById('new-list').innerHTML=newDocs.map(x=>`<div>📄 ${x.desc||x.notes||''} <span style="color:#888;font-size:11px">— uploaded ${fmt(x.uploaded)}</span></div>`).join('');
+  // phase bars
+  const phases=[{label:'Planning',items:planItems},{label:'Execution',items:execItems}];
+  document.getElementById('aud-phases').innerHTML=phases.map(p=>{
+    const linked=p.items.filter(x=>x.docLink).length;
+    const pp=p.items.length?Math.round(linked/p.items.length*100):0;
+    return `<div class="pr"><span class="pn">${p.label}</span><div class="pb2"><div class="pf2" style="width:${pp}%;background:var(--st)"></div></div><span class="pp">${pp}%</span></div>`;
+  }).join('');
+}
+function renderAudDocs(){
+  const q=(document.getElementById('aud-q')?.value||'').toLowerCase();
+  const ph=document.getElementById('aud-phase')?.value||'';
+  let items=[];
+  if(!ph||ph==='planning') items=items.concat(planItems.map(x=>({...x,_phase:'planning'})));
+  if(!ph||ph==='execution') items=items.concat(execItems.map(x=>({...x,_phase:'execution'})));
+  items=items.filter(x=>x.docLink&&x.status==='Completed');
+  if(q) items=items.filter(x=>(x.desc||'').toLowerCase().includes(q)||(x.notes||'').toLowerCase().includes(q));
+  const byPhase={planning:[],execution:[]};
+  items.forEach(x=>byPhase[x._phase].push(x));
+  const el=document.getElementById('aud-doc-list');
+  el.innerHTML=['planning','execution'].map(ph=>{
+    const phItems=byPhase[ph];
+    if(!phItems.length)return '';
+    return `<div class="dcat"><div class="dcath" onclick="this.nextElementSibling.classList.toggle('open')"><h3>${ph.charAt(0).toUpperCase()+ph.slice(1)} — ${phItems.length} documents</h3><span>▾</span></div>
+    <div class="dcatb">${phItems.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 15px;border-bottom:.5px solid #f0f0f0">
+      <div><div style="font-size:12px;font-weight:600">${x.desc||''}</div><div style="font-size:11px;color:#888">${x.notes||''} · uploaded ${fmt(x.uploaded)}</div></div>
+      <a class="lb" href="${x.docLink}" target="_blank">🔗 Open</a></div>`).join('')}</div></div>`;
+  }).join('')||`<div style="text-align:center;color:#aaa;padding:24px;font-size:12px">No documents found.</div>`;
+}
+function renderAudRequests(){
+  const body=document.getElementById('body-aud-requests');
+  if(!body)return;
+  const urgClass={Normal:'',High:'sb-In-progress',Urgent:'sb-Requires-Attention'};
+  body.innerHTML=reqItems.map((it,i)=>{
+    const myRls=rlItems.filter(x=>x.requestId===String(it.id));
+    const rlHtml=myRls.map(rl=>`<div class="rl-row" style="display:flex;gap:6px;align-items:center;padding:3px 0">
+      ${rl.docLink?`<a class="lb" href="${rl.docLink}" target="_blank">🔗 ${rl.docName||'Open'}</a>`:`<span class="lb empty">${rl.docName||'—'}</span>`}
+      ${userRole==='admin'?`<button class="btn" style="padding:1px 5px;font-size:9px;color:var(--att)" onclick="deleteResponseLink('${rl.id}','${it.id}')">✕</button>`:''}
+    </div>`).join('');
+    const addRlBtn=userRole==='admin'?`<button class="btn" style="padding:2px 6px;font-size:10px;margin-top:3px" onclick="triggerRlUpload('${it.id}')">📎 Add Doc</button>`:'';
+    return `<tr class="aud-req-row">
+      <td class="n">${i+1}</td>
+      <td>${dateIn(it.date,'auditorRequests',it.id,'date')}</td>
+      <td>${textIn(it.requestedBy,'auditorRequests',it.id,'requestedBy','it')}</td>
+      <td class="dc">${textIn(it.description,'auditorRequests',it.id,'description','it')}</td>
+      <td><span class="sb ${urgClass[it.urgency]||''}">${it.urgency||'Normal'}</span></td>
+      <td>${statusSel(it.status,'auditorRequests',it.id)}</td>
+      <td>${textIn(it.assignedTo,'auditorRequests',it.id,'assignedTo','it')}</td>
+      <td>${dateIn(it.dateResolved,'auditorRequests',it.id,'dateResolved')}</td>
+      <td>${rlHtml}${addRlBtn}</td>
+      <td>${delBtn('auditorRequests',it.id)}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px">No auditor requests.</td></tr>`;
+}
+function renderAudMyRequests(){
+  const my=reqItems.filter(x=>x.requestedBy&&x.requestedBy===document.getElementById('req-name')?.value);
+  document.getElementById('my-req-list').innerHTML=my.map(it=>{
+    const cls={Open:'sb-Not-Started',Submitted:'sb-In-progress','In Progress':'sb-In-progress',Resolved:'sb-Completed',Closed:'sb-Completed'}[it.status]||'';
+    return `<div class="dc2" style="margin-bottom:8px;padding:10px 14px">
+      <div style="display:flex;justify-content:space-between"><strong style="font-size:12px">${it.description||''}</strong><span class="sb ${cls}">${it.status||''}</span></div>
+      <div style="font-size:11px;color:#888;margin-top:4px">Submitted ${fmt(it.date)} · Urgency: ${it.urgency||'Normal'} · Assigned: ${it.assignedTo||'—'}</div>
+    </div>`;
+  }).join('')||`<div style="color:#aaa;font-size:12px;padding:10px 0">No requests submitted yet.</div>`;
+}
+
+// ════════════════════════════════════════════════
+// CRUD — QUICK SAVE
+// ════════════════════════════════════════════════
+const _saveQueues={};
+function quickSave(tab, id, field, value, el){
+  const key=tab+'|'+id;
+  clearTimeout(_saveQueues[key]);
+  _saveQueues[key]=setTimeout(async ()=>{
+    const items=getItems(tab);
+    const idx=items.findIndex(x=>x.id===id);
+    if(idx<0)return;
+    items[idx][field]=value;
+    // update status badge class on select
+    if(field==='status'&&el&&el.tagName==='SELECT'){ el.className=`ie is sb sb-${value.replace(/\s/g,'-')}`; }
+    try{
+      const spFields={};
+      const map=F[tab]||{};
+      const sk=map[field];
+      if(sk) spFields[sk]=spWriteValue(field,value,items[idx]);
+      await spPatch(getListName(tab),id,spFields);
+      showToast('Saved','ok');
+      // fire webhook if auditor request resolved
+      if(tab==='auditorRequests'&&field==='status'&&value==='Resolved'&&_webhookUrl){
+        fireWebhook(items[idx]).catch(()=>{});
+      }
+      buildNotifications();
+    }catch(e){showToast('Save error: '+e.message,'err');}
+  },600);
+}
+
+// ════════════════════════════════════════════════
+// CRUD — ADD ROW
+// ════════════════════════════════════════════════
+async function addRow(tab){
+  if(userRole==='auditor'){
+    if(tab!=='questions'){showToast('Switch to Admin mode to add items','err');return;}
+    const q=prompt('Enter your question for the StudyTrust team (text only — no document needed):');
+    if(!q||!q.trim())return;
+    try{
+      showLoad('Submitting question…');
+      const r=await spPost(getListName('questions'),{Status:'Open',Source:'Auditor',Year:currentYear,Title:q.trim()});
+      const newItem=fromSpItem('questions',r);
+      getItems('questions').push(newItem);
+      renderTab('questions');
+      showToast('Question submitted','ok');
+    }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+    return;
+  }
+  let fields={};
+  if(tab==='auditorRequests') fields={RequestDate:today(),Status:'Open',Year:currentYear,Title:'New request'};
+  else if(tab==='register') fields={DateRequested:today(),Year:currentYear,Title:'New document'};
+  else if(tab==='teams') fields={DateRequested:today(),Status:'Open',Year:currentYear,Email:''};
+  else if(tab==='sampling') fields={DateRequested:today(),Status:'Not Started',Year:currentYear,Title:'New sample'};
+  else if(tab==='questions') fields={Status:'Open',Year:currentYear,Title:'New question'};
+  else if(tab==='personnel') fields={Status:'Not Started',AccessLevel:'Internal Only',Title:'New document'};
+  else if(tab==='links') fields={RequestId:'GENERAL',Year:currentYear,DocName:'New link',DocLink:'',Notes:''};
+  else fields={Status:'Not Started',Year:currentYear,Title:'New item'};
+  try{
+    showLoad('Adding row…');
+    const r=await spPost(getListName(tab),fields);
+    const newItem=fromSpItem(tab,r);
+    getItems(tab).push(newItem);
+    renderTab(tab);
+    showToast('Row added','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+async function deleteRow(tab,id){
+  if(!confirm('Delete this row? This cannot be undone.'))return;
+  try{
+    showLoad('Deleting…');
+    await spDelete(getListName(tab),id);
+    const items=getItems(tab).filter(x=>x.id!==id);
+    setItems(tab,items);
+    renderTab(tab);
+    showToast('Deleted','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+// ════════════════════════════════════════════════
+// FILE UPLOAD
+// ════════════════════════════════════════════════
+// Cache of driveId per library name
+const _driveCache={};
+async function getDriveId(libraryName){
+  if(_driveCache[libraryName]) return _driveCache[libraryName];
+  const siteId=await getSiteId();
+  const data=await graphFetch(`/sites/${siteId}/drives`);
+  const drive=data.value.find(d=>d.name.toLowerCase()===libraryName.toLowerCase());
+  if(!drive) throw new Error(`Document library "${libraryName}" not found. Available: ${data.value.map(d=>d.name).join(', ')}`);
+  _driveCache[libraryName]=drive.id;
+  return drive.id;
+}
+
+// Encode path segments individually — spaces→%20, slashes preserved
+function encodeSpPath(segments){ return segments.map(s=>encodeURIComponent(s)).join('/'); }
+
+// Sanitize a string for use as a SharePoint file or folder name:
+// - strip characters SharePoint disallows: " * : < > ? / \ | and control chars
+// - trim trailing/leading spaces and periods (SharePoint rejects names ending in '.' or ' ')
+// - collapse whitespace and cap length (SharePoint path limit is 400 chars total)
+function sanitizeSpName(name, maxLen){
+  maxLen = maxLen || 100;
+  let s = String(name||'')
+    .replace(/[":*<>?/\\|]/g,'-')
+    .replace(/[\x00-\x1f]/g,'')
+    .replace(/\s+/g,' ')
+    .trim();
+  // Strip trailing dots/spaces (can be left after trim if name ended with ". ")
+  s = s.replace(/[. ]+$/,'');
+  if(s.length>maxLen) s = s.slice(0,maxLen).replace(/[. ]+$/,'');
+  return s;
+}
+
+// Upload file via Graph API PUT to correct library/folder
+async function spUploadFile(libraryName, folderPath, file){
+  const driveId = await getDriveId(libraryName);
+  const token   = await getToken();
+  const siteId  = await getSiteId();
+  // Sanitize the file name but preserve its extension
+  const dot = file.name.lastIndexOf('.');
+  const ext = dot>0 ? file.name.slice(dot) : '';
+  const base = dot>0 ? file.name.slice(0,dot) : file.name;
+  const safeName = sanitizeSpName(base, 150) + ext;
+  const parts   = folderPath ? [...folderPath.split('/'), safeName] : [safeName];
+  const encodedPath = encodeSpPath(parts);
+  const r = await fetch(`${GRAPH_BASE}/sites/${siteId}/drives/${driveId}/root:/${encodedPath}:/content`,{
+    method:'PUT',
+    headers:{Authorization:'Bearer '+token, 'Content-Type':file.type||'application/octet-stream'},
+    body: await file.arrayBuffer()
+  });
+  if(!r.ok){
+    let msg=`HTTP ${r.status}`;
+    try{ const e=await r.json(); msg=e?.error?.message||e?.error?.code||msg; }catch(_){}
+    throw new Error(msg);
+  }
+  const result=await r.json();
+  return result.webUrl;
+}
+
+// Ensure each level of a folder path exists in the Graph drive
+async function spCreateFolder(libraryName, folderPath){
+  const driveId=await getDriveId(libraryName);
+  const token=await getToken();
+  const siteId=await getSiteId();
+  const parts=folderPath.split('/');
+  for(let i=0;i<parts.length;i++){
+    const folderName=parts[i];
+    const parentEncoded=i>0?encodeSpPath(parts.slice(0,i)):null;
+    const createUrl=parentEncoded
+      ?`${GRAPH_BASE}/sites/${siteId}/drives/${driveId}/root:/${parentEncoded}:/children`
+      :`${GRAPH_BASE}/sites/${siteId}/drives/${driveId}/root/children`;
+    await fetch(createUrl,{
+      method:'POST',
+      headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({name:folderName,folder:{},['@microsoft.graph.conflictBehavior']:'ignore'})
+    }).catch(()=>{});
+  }
+}
+
+function triggerUpload(tab,id,multi){
+  _pendingUpload={tab,id,multi};
+  if(multi){ document.getElementById('multi-upload-input').value=''; document.getElementById('multi-upload-input').click(); }
+  else { document.getElementById('file-upload-input').value=''; document.getElementById('file-upload-input').click(); }
+}
+
+async function handleFileUpload(input){
+  const file=input.files[0]; if(!file)return;
+  const pu=_pendingUpload; if(!pu)return;
+
+  // Response-link upload (Add Doc on Auditor Request row)
+  if(pu.isRl){
+    const reqItem=reqItems.find(x=>x.id===pu.id);
+    if(!reqItem){showToast('Request not found','err');return;}
+    try{
+      showLoad('Uploading '+file.name+'…');
+      const libName='Audit '+currentYear;
+      const folder='Auditor Requests/'+pu.id;
+      await spCreateFolder(libName,folder);
+      const link=await spUploadFile(libName,folder,file);
+      const rl=await spPost(LISTS.responseLinks,{Year:currentYear,RequestId:String(pu.id),DocName:file.name,DocLink:link,UploadedBy:userName,UploadedDate:today()+'T00:00:00Z'});
+      rlItems.push(fromSpItem('responseLinks',rl));
+      renderAudRequests();
+      showToast('Uploaded: '+file.name,'ok');
+    }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+    return;
+  }
+
+  // Standard upload
+  const items=getItems(pu.tab);
+  const item=items.find(x=>x.id===pu.id);
+  if(!item){showToast('Item not found','err');return;}
+  const catObj=DOC_CATEGORIES.find(c=>c.label===item.docName);
+  const libName=catObj?docLibForYear(catObj,currentYear):'Audit '+currentYear;
+  const folder=catObj?catObj.path:'';
+  try{
+    showLoad('Uploading '+file.name+'…');
+    if(folder) await spCreateFolder(libName,folder);
+    const link=await spUploadFile(libName,folder,file);
+    item.docLink=link; item.uploaded=today();
+    await spPatch(getListName(pu.tab),pu.id,{DocLink0:link,Uploaded:today()+'T00:00:00Z',Notes:item.notes||file.name});
+    renderTab(pu.tab);
+    showToast('Uploaded: '+file.name,'ok');
+  }catch(e){showToast('Upload error [lib: '+libName+', folder: '+folder+']: '+e.message,'err');}finally{hideLoad();}
+}
+
+async function handleFolderUpload(input){
+  const files=Array.from(input.files); if(!files.length)return;
+  const pu=_pendingUpload; if(!pu)return;
+  const items=getItems(pu.tab);
+  const item=items.find(x=>x.id===pu.id);
+  if(!item)return;
+  const catObj=DOC_CATEGORIES.find(c=>c.label===item.docName);
+  const libName=catObj?docLibForYear(catObj,currentYear):'Audit '+currentYear;
+  const basePath=catObj?catObj.path:'';
+  const rawFolderName=item.notes||item.desc||'Multi_'+today();
+  const folderName=sanitizeSpName(rawFolderName,60)||'Multi_'+today();
+  const subPath=basePath?basePath+'/'+folderName:folderName;
+  try{
+    showLoad('Uploading '+files.length+' files…');
+    await spCreateFolder(libName,subPath);
+    let folderLink='';
+    for(const file of files){
+      const link=await spUploadFile(libName,subPath,file);
+      if(!folderLink) folderLink=link.substring(0,link.lastIndexOf('/'));
+    }
+    item.docLink=folderLink; item.uploaded=today();
+    await spPatch(getListName(pu.tab),pu.id,{DocLink0:folderLink,Uploaded:today()+'T00:00:00Z'});
+    renderTab(pu.tab);
+    showToast('Uploaded '+files.length+' files','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+function triggerRlUpload(reqId){
+  _pendingUpload={tab:'responseLinks',id:reqId,multi:false,isRl:true};
+  document.getElementById('file-upload-input').value='';
+  document.getElementById('file-upload-input').click();
+}
+async function deleteResponseLink(rlId,reqId){
+  if(!confirm('Remove this response document?'))return;
+  try{
+    await spDelete(LISTS.responseLinks,rlId);
+    rlItems=rlItems.filter(x=>x.id!==rlId);
+    renderAudRequests();
+    showToast('Removed','ok');
+  }catch(e){showToast(e.message,'err');}
+}
+async function submitRequest(){
+  const name=document.getElementById('req-name').value.trim();
+  const desc=document.getElementById('req-desc').value.trim();
+  const urgency=document.getElementById('req-urgency').value;
+  if(!name||!desc){showToast('Name and description are required','err');return;}
+  try{
+    showLoad('Submitting request…');
+    const r=await spPost(LISTS.auditorRequests,{Year:currentYear,RequestDate:today(),RequestedBy:name,Title:desc,Urgency:urgency,Status:'Open'});
+    reqItems.push(fromSpItem('auditorRequests',r));
+    document.getElementById('req-desc').value='';
+    renderAudMyRequests();
+    showToast('Request submitted','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+// ════════════════════════════════════════════════
+// FILTERS
+// ════════════════════════════════════════════════
+function filterTab(tab){
+  const q=(document.getElementById('f-'+tab+'-q')?.value||'').toLowerCase();
+  const s=document.getElementById('f-'+tab+'-s')?.value||'';
+  const p=document.getElementById('f-'+tab+'-p')?.value||'';
+  const l=document.getElementById('f-'+tab+'-l')?.value||'';
+  const src=document.getElementById('f-'+tab+'-src')?.value||'';
+  const cf=document.getElementById('f-'+tab+'-cf')?.value||'';
+  const ct=document.getElementById('f-'+tab+'-ct')?.value||'';
+  const uf=document.getElementById('f-'+tab+'-uf')?.value||'';
+  const ut=document.getElementById('f-'+tab+'-ut')?.value||'';
+  let items=getItems(tab);
+  if(q) items=items.filter(x=>JSON.stringify(x).toLowerCase().includes(q));
+  if(s) items=items.filter(x=>x.status===s);
+  if(p) items=items.filter(x=>x.responsible===p);
+  if(src) items=items.filter(x=>x.source===src);
+  if(l==='late') items=items.filter(x=>isLate(x.dueDate)&&x.status!=='Completed');
+  if(l==='nodoc') items=items.filter(x=>!x.docLink);
+  if(cf) items=items.filter(x=>x.dueDate>=cf);
+  if(ct) items=items.filter(x=>x.dueDate<=ct);
+  if(uf) items=items.filter(x=>x.uploaded>=uf);
+  if(ut) items=items.filter(x=>x.uploaded<=ut);
+  renderTab(tab,()=>true);
+  // re-render with filtered items directly
+  const body=document.getElementById('body-'+tab);
+  if(!body)return;
+  const savedItems=getItems(tab);
+  setItems(tab,items);
+  renderTab(tab);
+  setItems(tab,savedItems);
+}
+function clearFilters(tab){
+  ['q','s','p','l','cf','ct','uf','ut','src'].forEach(k=>{
+    const el=document.getElementById('f-'+tab+'-'+k);
+    if(el){el.value=el.tagName==='SELECT'?el.options[0]?.value||'':'';}
+  });
+  renderTab(tab);
+}
+
+// ════════════════════════════════════════════════
+// FILTER POPULATE (status/person dropdowns)
+// ════════════════════════════════════════════════
+function populateFilterDropdowns(tab,items){
+  const sSel=document.getElementById('f-'+tab+'-s');
+  if(sSel&&sSel.options.length<=1){
+    const statuses=[...new Set(items.map(x=>x.status).filter(Boolean))].sort();
+    statuses.forEach(s=>{ if(![...sSel.options].find(o=>o.value===s)){ const o=document.createElement('option');o.value=s;o.textContent=s;sSel.appendChild(o); } });
+  }
+  const pSel=document.getElementById('f-'+tab+'-p');
+  if(pSel&&pSel.options.length<=1){
+    const persons=[...new Set(items.map(x=>x.responsible).filter(Boolean))].sort();
+    persons.forEach(p=>{ const o=document.createElement('option');o.value=p;o.textContent=p;pSel.appendChild(o); });
+  }
+}
+
+
+// ════════════════════════════════════════════════
+// EXPORT FUNCTIONS
+// ════════════════════════════════════════════════
+function exportCsv(tab){
+  const items=getItems(tab);
+  if(!items.length){showToast('Nothing to export','err');return;}
+  const keys=Object.keys(items[0]).filter(k=>k!=='id');
+  const rows=[keys.join(','),...items.map(it=>keys.map(k=>JSON.stringify(it[k]??'')).join(','))];
+  const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`AuditTracker_${tab}_${currentYear}_${today()}.csv`;
+  a.click();
+  showToast('CSV exported','ok');
+}
+
+function exportXlsx(tab){
+  if(typeof XLSX==='undefined'){showToast('XLSX library not loaded','err');return;}
+  const items=getItems(tab);
+  if(!items.length){showToast('Nothing to export','err');return;}
+  const keys=Object.keys(items[0]);
+  const ws=XLSX.utils.json_to_sheet(items,{header:keys});
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,tab);
+  XLSX.writeFile(wb,`AuditTracker_${tab}_${currentYear}_${today()}.xlsx`);
+  showToast('XLSX exported','ok');
+}
+
+function exportBackup(){
+  const data={
+    exportedAt:new Date().toISOString(),
+    year:currentYear,
+    planning:planItems,
+    execution:execItems,
+    recommendations:recItems,
+    sampling:sampItems,
+    teams:teamsItems,
+    register:regItems,
+    auditorRequests:reqItems,
+    responseLinks:rlItems,
+    questions:questItems,
+    personnel:persItems,
+    yearConfigs:yearConfigs
+  };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`AuditTracker_Backup_${currentYear}_${today()}.json`;
+  a.click();
+  showToast('Backup exported','ok');
+}
+
+function doRestore(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(!confirm(`Restore backup from ${data.exportedAt}? This will overwrite all local data for ${data.year||'all years'}.`))return;
+      showLoad('Restoring…');
+      // Write back to SharePoint for each tab
+      const tabs=[['planning',LISTS.planning,planItems],['execution',LISTS.execution,execItems],
+        ['recommendations',LISTS.recommendations,recItems],['sampling',LISTS.sampling,sampItems],
+        ['teams',LISTS.teams,teamsItems],['register',LISTS.register,regItems],
+        ['questions',LISTS.questions,questItems]];
+      for(const [key,list,_] of tabs){
+        if(data[key]) for(const it of data[key]){
+          const spFields=toSpFields(key,it);
+          if(it.id) await spPatch(list,it.id,spFields).catch(()=>{});
+        }
+      }
+      showToast('Restore complete. Reloading…','ok');
+      setTimeout(()=>location.reload(),1500);
+    }catch(ex){showToast('Restore failed: '+ex.message,'err');}
+    finally{hideLoad();}
+  };
+  reader.readAsText(file);
+}
+
+// ════════════════════════════════════════════════
+// IMPORT RECOMMENDATIONS
+// ════════════════════════════════════════════════
+function openImportRecs(){
+  openM('m-importrecs');
+  document.getElementById('import-recs-preview').innerHTML='';
+  document.getElementById('import-recs-input').value='';
+}
+async function importRecs(){
+  const file=document.getElementById('import-recs-input').files[0];
+  if(!file){showToast('Choose a file first','err');return;}
+  const text=await file.text();
+  const lines=text.split('\n').map(l=>l.trim()).filter(Boolean);
+  const header=lines[0].split(',').map(s=>s.replace(/"/g,'').trim());
+  const iDesc=header.indexOf('Description');
+  const iSev=header.indexOf('Severity');
+  const iOwn=header.indexOf('Owner');
+  const iDue=header.indexOf('DueDate');
+  const rows=lines.slice(1).map(l=>{
+    const cols=l.split(',').map(s=>s.replace(/"/g,'').trim());
+    return{description:cols[iDesc>-1?iDesc:0]||'',severity:cols[iSev>-1?iSev:1]||'Medium',owner:cols[iOwn>-1?iOwn:2]||'',dueDate:cols[iDue>-1?iDue:3]||''};
+  }).filter(r=>r.description);
+  if(!rows.length){showToast('No valid rows found','err');return;}
+  document.getElementById('import-recs-preview').innerHTML=rows.map(r=>`<div style="font-size:11px;border-bottom:.5px solid #eee;padding:3px 0">${r.description} | ${r.severity} | ${r.owner} | ${r.dueDate}</div>`).join('');
+  if(!confirm(`Import ${rows.length} recommendations?`))return;
+  showLoad('Importing…');
+  try{
+    for(const r of rows){
+      const sp=await spPost(LISTS.recommendations,{Year:currentYear,Title:r.description,Severity:r.severity,Owner:r.owner,DueDate:r.dueDate,Status:'Open'});
+      recItems.push(fromSpItem('recommendations',sp));
+    }
+    renderTab('recommendations');
+    closeM('m-importrecs');
+    showToast('Imported '+rows.length+' recommendations','ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+// ════════════════════════════════════════════════
+// COPY PLANNING → EXECUTION
+// ════════════════════════════════════════════════
+async function copyPlanningToExecution(){
+  if(userRole==='auditor'){showToast('Switch to Admin mode to copy items','err');return;}
+  if(!planItems.length){showToast('No Planning items to copy','err');return;}
+  const existing=execItems.map(x=>(x.desc||'').toLowerCase().trim());
+  const toAdd=planItems.filter(it=>{
+    const d=(it.desc||'').toLowerCase().trim();
+    return d && !existing.includes(d);
+  });
+  if(!toAdd.length){showToast('All Planning items already exist in Execution','ok');return;}
+  if(!confirm(`Copy ${toAdd.length} Planning item(s) to Execution?\n(${planItems.length-toAdd.length} already exist and will be skipped)\nStatuses will be reset to "Not Started".`))return;
+  showLoad('Copying…');
+  let copied=0;
+  try{
+    for(const it of toAdd){
+      const fields={
+        Year:currentYear,
+        Title:it.desc||'',
+        DueDate:it.dueDate?it.dueDate+'T00:00:00Z':null,
+        Status:'Not Started',
+        Responsible:it.responsible||'',
+        Shadower:it.shadower||'',
+        DocName:it.docName||''
+      };
+      const sp=await spPost(LISTS.execution,fields);
+      execItems.push(fromSpItem('execution',sp));
+      copied++;
+    }
+    renderTab('execution');
+    showToast(`Copied ${copied} item(s) to Execution`,'ok');
+  }catch(e){showToast('Copy error: '+e.message,'err');}finally{hideLoad();}
+}
+
+// ════════════════════════════════════════════════
+// REMOVE DUPLICATES
+// ════════════════════════════════════════════════
+async function removeDuplicates(tab){
+  const items=getItems(tab);
+  const seen=new Set();
+  const dups=[];
+  for(const it of items){
+    const key=it.desc||it.title||it.description||it.docName||'';
+    if(seen.has(key.toLowerCase())) dups.push(it);
+    else seen.add(key.toLowerCase());
+  }
+  if(!dups.length){showToast('No duplicates found','ok');return;}
+  if(!confirm(`Remove ${dups.length} duplicate row(s)?`))return;
+  showLoad('Removing…');
+  try{
+    for(const it of dups){
+      await spDelete(getListName(tab),it.id);
+    }
+    setItems(tab,getItems(tab).filter(x=>!dups.find(d=>d.id===x.id)));
+    renderTab(tab);
+    showToast(`Removed ${dups.length} duplicates`,'ok');
+  }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+// ════════════════════════════════════════════════
+// NOTIFICATIONS
+// ════════════════════════════════════════════════
+let _readNotifs=JSON.parse(sessionStorage.getItem('at_readNotifs')||'[]');
+
+function buildNotifications(){
+  const now=new Date();
+  const msgs=[];
+  // Late items
+  const lateP=planItems.filter(x=>isLate(x.dueDate)&&x.status!=='Completed');
+  const lateE=execItems.filter(x=>isLate(x.dueDate)&&x.status!=='Completed');
+  const lateR=recItems.filter(x=>isLate(x.dueDate)&&x.status!=='Resolved'&&x.status!=='Closed');
+  if(lateP.length) msgs.push({id:'late-plan',type:'warn',text:`${lateP.length} planning item(s) are overdue`});
+  if(lateE.length) msgs.push({id:'late-exec',type:'warn',text:`${lateE.length} execution item(s) are overdue`});
+  if(lateR.length) msgs.push({id:'late-rec',type:'warn',text:`${lateR.length} recommendation(s) are overdue`});
+  // Open auditor requests
+  const openReq=reqItems.filter(x=>x.status==='Open');
+  if(openReq.length) msgs.push({id:'open-req',type:'info',text:`${openReq.length} open auditor request(s)`});
+  // No documents linked
+  const noDocs=planItems.filter(x=>x.status==='Completed'&&!x.docLink).length+execItems.filter(x=>x.status==='Completed'&&!x.docLink).length;
+  if(noDocs>0) msgs.push({id:'no-docs',type:'warn',text:`${noDocs} completed item(s) without a linked document`});
+  // Unanswered questions
+  const uq=questItems.filter(x=>x.status==='Open').length;
+  if(uq>0) msgs.push({id:'uq',type:'info',text:`${uq} unanswered question(s)`});
+  // Year deadline
+  const cfg=yearConfigs[currentYear]||{};
+  if(cfg.fieldworkEnd){
+    const days=Math.ceil((new Date(cfg.fieldworkEnd)-now)/86400000);
+    if(days>=0&&days<=14) msgs.push({id:'deadline',type:days<=3?'warn':'info',text:`Fieldwork ends in ${days} day(s)`});
+  }
+  const unread=msgs.filter(m=>!_readNotifs.includes(m.id));
+  const badge=document.getElementById('notif-badge');
+  if(badge){ badge.textContent=unread.length; badge.style.display=unread.length?'inline-block':'none'; }
+  const list=document.getElementById('notif-list');
+  if(list){
+    list.innerHTML=msgs.length?msgs.map(m=>{
+      const cls=m.type==='warn'?'rd-bg':'info-bl';
+      const icon=m.type==='warn'?'⚠':'ℹ';
+      const read=_readNotifs.includes(m.id);
+      return `<div class="notif-item ${read?'read':''}" onclick="markRead('${m.id}',this)"><span class="notif-icon">${icon}</span><span class="notif-text">${m.text}</span></div>`;
+    }).join(''):`<div style="color:#aaa;font-size:12px;padding:8px">No notifications</div>`;
+  }
+}
+function toggleNotif(){
+  const p=document.getElementById('notif-panel');
+  p.style.display=p.style.display==='block'?'none':'block';
+}
+function markRead(id,el){
+  if(!_readNotifs.includes(id)) _readNotifs.push(id);
+  sessionStorage.setItem('at_readNotifs',JSON.stringify(_readNotifs));
+  el.classList.add('read');
+  buildNotifications();
+}
+function markAllRead(){
+  const items=document.querySelectorAll('.notif-item');
+  items.forEach(el=>{
+    const m=el.getAttribute('onclick')?.match(/markRead\('([^']+)'/);
+    if(m&&!_readNotifs.includes(m[1])) _readNotifs.push(m[1]);
+    el.classList.add('read');
+  });
+  sessionStorage.setItem('at_readNotifs',JSON.stringify(_readNotifs));
+  buildNotifications();
+}
+
+// ════════════════════════════════════════════════
+// WEBHOOK MANAGEMENT
+// ════════════════════════════════════════════════
+function loadWebhookFromStorage(){
+  _webhookUrl=localStorage.getItem('at_webhookUrl')||'';
+}
+function loadWebhookUI(){
+  document.getElementById('wh-auditor-url').value=_webhookUrl;
+  const dot=document.getElementById('wh-dot');
+  if(dot){dot.classList.toggle('wh-ok',!!_webhookUrl);dot.classList.toggle('wh-empty',!_webhookUrl);}
+  openM('m-webhook');
+}
+function saveWebhooks(){
+  _webhookUrl=(document.getElementById('wh-auditor-url')?.value||'').trim();
+  localStorage.setItem('at_webhookUrl',_webhookUrl);
+  const dot=document.getElementById('wh-dot');
+  if(dot){dot.classList.toggle('wh-ok',!!_webhookUrl);dot.classList.toggle('wh-empty',!_webhookUrl);}
+  closeM('m-webhook');
+  showToast('Webhook saved','ok');
+}
+async function testWebhook(){
+  const url=(document.getElementById('wh-auditor-url')?.value||'').trim();
+  if(!url){showToast('Enter a webhook URL first','err');return;}
+  try{
+    await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({event:'test',dashboard:'StudyTrust Audit Tracker',timestamp:new Date().toISOString(),message:'Test notification from Audit Tracker v4.7'})});
+    showToast('Test sent','ok');
+  }catch(e){showToast('Webhook error: '+e.message,'err');}
+}
+async function fireWebhook(req){
+  if(!_webhookUrl)return;
+  await fetch(_webhookUrl,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event:'request_resolved',requestId:req.id,description:req.description,resolvedBy:userName,timestamp:new Date().toISOString()})});
+}
+
+// ════════════════════════════════════════════════
+// GLOBAL SEARCH (v4.7 new)
+// ════════════════════════════════════════════════
+function globalSearch(q){
+  const res=document.getElementById('gs-results');
+  if(!q||q.length<2){res.style.display='none';return;}
+  const ql=q.toLowerCase();
+  const hits=[];
+  const search=(tab,items)=>items.forEach(it=>{
+    const str=JSON.stringify(it).toLowerCase();
+    if(str.includes(ql)) hits.push({tab,label:it.desc||it.title||it.description||it.docName||it.notes||'',status:it.status||''});
+  });
+  search('planning',planItems);search('execution',execItems);search('recommendations',recItems);
+  search('sampling',sampItems);search('teams',teamsItems);search('register',regItems);
+  search('questions',questItems);search('personnel',persItems);search('auditorRequests',reqItems);
+  res.style.display='block';
+  if(!hits.length){res.innerHTML='<div class="gsr" style="color:#aaa">No results</div>';return;}
+  res.innerHTML=hits.slice(0,12).map(h=>`<div class="gsr" onclick="gsGo('${h.tab}');this.closest('#gs-results').style.display='none'">
+    <span class="gsr-badge">${h.tab}</span>
+    <span class="gsr-title">${h.label.substring(0,60)||'—'}</span>
+    ${h.status?`<span style="margin-left:auto;font-size:10px;color:#888">${h.status}</span>`:''}
+  </div>`).join('');
+}
+function gsGo(tab){
+  document.getElementById('gs-input').value='';
+  activateTab(tab);
+}
+
+// ════════════════════════════════════════════════
+// DIAGNOSTICS (v4.7 new)
+// ════════════════════════════════════════════════
+async function openDiag(){
+  openM('m-diag');
+  const rows=document.getElementById('diag-rows');
+  rows.innerHTML='<div style="color:#888;font-size:12px">Running diagnostics…</div>';
+  const checks=[];
+  // Auth
+  try{ await getToken(); checks.push({label:'Auth token',ok:true,note:'Valid'}); }
+  catch(e){ checks.push({label:'Auth token',ok:false,note:e.message}); }
+  // Site
+  try{ const sid=await getSiteId(); checks.push({label:'SharePoint site',ok:!!sid,note:sid?'Connected':'Not found'}); }
+  catch(e){ checks.push({label:'SharePoint site',ok:false,note:e.message}); }
+  // Lists — fetch directly with $top=1 to avoid duplicate $top
+  const siteId=await getSiteId();
+  const listNames=Object.entries(LISTS);
+  for(const [key,name] of listNames){
+    try{
+      const r=await graphFetch(`/sites/${siteId}/lists/${name}/items?$top=1`);
+      checks.push({label:'List: '+name,ok:true,note:(r.value?.length??0)+' rows sampled'});
+    }catch(e){ checks.push({label:'List: '+name,ok:false,note:e.message}); }
+  }
+  rows.innerHTML=checks.map(c=>`<div class="diag-row"><span>${c.ok?'✅':'❌'} ${c.label}</span><span style="color:${c.ok?'var(--gn-tx)':'var(--rd-tx)'};">${c.note}</span></div>`).join('');
+}
+
+// ════════════════════════════════════════════════
+// YEAR CONFIG MODAL
+// ════════════════════════════════════════════════
+function openYearCfgModal(){
+  const cfg=yearConfigs[currentYear]||{};
+  document.getElementById('cfg-year').value=currentYear;
+  document.getElementById('cfg-audit-start').value=cfg.auditStart||'';
+  document.getElementById('cfg-fieldwork-end').value=cfg.fieldworkEnd||'';
+  document.getElementById('cfg-report-due').value=cfg.reportDue||'';
+  document.getElementById('cfg-lead').value=cfg.lead||'';
+  openM('m-yearcfg');
+}
+
+// ════════════════════════════════════════════════
+// UTILITY HELPERS
+// ════════════════════════════════════════════════
+function getListName(tab){ return LISTS[tab]||tab; }
+function getItems(tab){
+  return({planning:planItems,execution:execItems,recommendations:recItems,sampling:sampItems,
+    teams:teamsItems,register:regItems,auditorRequests:reqItems,responseLinks:rlItems,
+    questions:questItems,personnel:persItems,links:rlItems})[tab]||[];
+}
+function setItems(tab,arr){
+  if(tab==='planning') planItems=arr;
+  else if(tab==='execution') execItems=arr;
+  else if(tab==='recommendations') recItems=arr;
+  else if(tab==='sampling') sampItems=arr;
+  else if(tab==='teams') teamsItems=arr;
+  else if(tab==='register') regItems=arr;
+  else if(tab==='auditorRequests') reqItems=arr;
+  else if(tab==='responseLinks') rlItems=arr;
+  else if(tab==='questions') questItems=arr;
+  else if(tab==='personnel') persItems=arr;
+  else if(tab==='links') rlItems=arr;
+}
+
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+async function init(){
+  try {
+    const alreadySignedIn = await initMsal();
+    if(alreadySignedIn){
+      document.getElementById('signin-screen').classList.add('hidden');
+      await loadAndRender();
+    } else {
+      hideLoad();
+      // Show sign-in screen — user clicks the button
+    }
+  } catch(e) {
+    hideLoad();
+    const errEl=document.getElementById('signin-error');
+    errEl.textContent=e.message; errEl.classList.add('show');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
