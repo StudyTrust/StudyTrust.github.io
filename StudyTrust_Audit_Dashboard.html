@@ -476,17 +476,25 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
       <input type="text" id="f-recommendations-q" placeholder="Search…" oninput="filterTab('recommendations')">
       <select id="f-recommendations-s" onchange="filterTab('recommendations')"><option value="">All Statuses</option></select>
     </div>
-    <div class="tw"><table><thead><tr>
-      <th class="n">#</th><th style="min-width:155px">Weakness</th><th style="min-width:175px">Recommendation</th>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:15%"><col style="width:15%">
+      <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:7%">
+      <col style="width:11%"><col style="width:10%"><col style="width:14.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Weakness</th><th>Recommendation</th>
       <th>Compliance Date</th><th>Status</th><th>Responsible</th><th>Shadower</th>
-      <th>Document Category</th><th>Upload / Link</th><th style="min-width:140px">Comments</th>
+      <th>Document Category</th><th>Upload / Link</th><th>Comments</th>
     </tr></thead><tbody id="body-recommendations"></tbody></table></div>
   </div>
 
   <!-- SAMPLING -->
   <div id="sec-sampling" class="section">
     <div class="sh"><h2>Sampling</h2><button class="btn btn-p" onclick="addRow('sampling')">+ Add</button></div>
-    <div class="tw"><table><thead><tr>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:16%"><col style="width:9%">
+      <col style="width:9%"><col style="width:9%"><col style="width:9%"><col style="width:9%">
+      <col style="width:12%"><col style="width:11%"><col style="width:13.5%">
+    </colgroup><thead><tr>
       <th class="n">#</th><th>Description</th><th>Requested By</th><th>Date Requested</th>
       <th>Date Uploaded</th><th>Status</th><th>Responsible</th><th>Document Category</th><th>Upload / Link</th><th>Document Name</th>
     </tr></thead><tbody id="body-sampling"></tbody></table></div>
@@ -495,7 +503,11 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
   <!-- TEAMS ACCESS -->
   <div id="sec-teams" class="section">
     <div class="sh"><h2>Auditors — Teams / SharePoint Access</h2><button class="btn btn-p" onclick="addRow('teams')">+ Add</button></div>
-    <div class="tw"><table><thead><tr>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:22%"><col style="width:10%">
+      <col style="width:10%"><col style="width:10%"><col style="width:9%">
+      <col style="width:10%"><col style="width:26.5%">
+    </colgroup><thead><tr>
       <th class="n">#</th><th>Email Address</th><th>Requested By</th><th>Date Requested</th>
       <th>Date Connected</th><th>Status</th><th>Responsible</th><th>Remarks</th>
     </tr></thead><tbody id="body-teams"></tbody></table></div>
@@ -504,8 +516,12 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
   <!-- DOCUMENT REGISTER -->
   <div id="sec-register" class="section">
     <div class="sh"><h2>Document Request Register</h2><button class="btn btn-p" onclick="addRow('register')">+ Add</button></div>
-    <div class="tw"><table><thead><tr>
-      <th class="n">#</th><th>Date</th><th style="min-width:175px">Document Requested</th><th>Requester</th>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:8%"><col style="width:18%">
+      <col style="width:8%"><col style="width:10%"><col style="width:8%">
+      <col style="width:8%"><col style="width:12%"><col style="width:10%"><col style="width:15.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Date</th><th>Document Requested</th><th>Requester</th>
       <th>Requested From</th><th>Submitter</th><th>Date Submitted</th><th>Document Name</th><th>Document Link</th><th>Comment</th>
     </tr></thead><tbody id="body-register"></tbody></table></div>
   </div>
@@ -523,8 +539,12 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
         <p style="margin:0 0 8px"><strong>The workflow:</strong> Open → Assign (In Progress) → Prepare &amp; Upload → Resolved (Teams notification fires) → Closed.</p>
       </div>
     </div>
-    <div class="tw"><table><thead><tr>
-      <th class="n">#</th><th>Date</th><th>From</th><th style="min-width:190px">Description</th>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:8%"><col style="width:9%">
+      <col style="width:24%"><col style="width:7%"><col style="width:9%">
+      <col style="width:10%"><col style="width:9%"><col style="width:12%"><col style="width:9.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Date</th><th>From</th><th>Description</th>
       <th>Urgency</th><th>Status</th><th>Assigned To</th><th>Date Resolved</th><th>Documents</th><th></th>
     </tr></thead><tbody id="body-aud-requests"></tbody></table></div>
   </div>
@@ -589,11 +609,15 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
       <select id="f-questions-src" onchange="filterTab('questions')"><option value="">All Sources</option><option>Anticipated</option><option>Prior Year</option><option>Auditor</option></select>
       <button class="btn" style="padding:4px 9px;font-size:11px" onclick="clearFilters('questions')">Clear</button>
     </div>
-    <div class="tw"><table><thead><tr>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:18%">
+      <col style="width:7%"><col style="width:8%"><col style="width:9%"><col style="width:9%">
+      <col style="width:27%"><col style="width:19.5%">
+    </colgroup><thead><tr>
       <th class="n">#</th>
-      <th style="min-width:220px">Question</th>
+      <th>Question</th>
       <th>Source</th><th>Status</th><th>Compliance Date</th><th>Responsible</th>
-      <th style="min-width:280px">Answer / Response</th><th>Notes</th>
+      <th>Answer / Response</th><th>Notes</th>
     </tr></thead><tbody id="body-questions"></tbody></table></div>
   </div>
 
@@ -614,8 +638,12 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
       <select id="f-personnel-s" onchange="filterTab('personnel')"><option value="">All Statuses</option></select>
       <button class="btn" style="padding:4px 9px;font-size:11px" onclick="clearFilters('personnel')">Clear</button>
     </div>
-    <div class="tw"><table><thead><tr>
-      <th class="n">#</th><th style="min-width:180px">Description</th>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:22%">
+      <col style="width:9%"><col style="width:8%"><col style="width:9%"><col style="width:9%">
+      <col style="width:12%"><col style="width:11%"><col style="width:17.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Description</th>
       <th>Compliance Date</th><th>Uploaded</th><th>Status</th><th>Responsible</th>
       <th>Document Category</th><th>Upload / Link</th><th>Auditor Access</th>
     </tr></thead><tbody id="body-personnel"></tbody></table></div>
@@ -635,9 +663,12 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
       <strong>What this tab is for.</strong>
       Links to key SharePoint folders and documents that are referenced repeatedly during the audit — for example the organisation's main SharePoint site, the annual report, and the financial statements — are stored here instead of being shared by email each time. Add a short description for each link so everyone knows what it points to.
     </div>
-    <div class="tw"><table><thead><tr>
-      <th class="n">#</th><th style="min-width:180px">Name / Description</th>
-      <th style="min-width:280px">Link</th><th style="min-width:200px">Notes</th><th></th>
+    <div class="tw"><table class="tbl-fit"><colgroup>
+      <col style="width:2.5%"><col style="width:22%">
+      <col style="width:35%"><col style="width:30%"><col style="width:10.5%">
+    </colgroup><thead><tr>
+      <th class="n">#</th><th>Name / Description</th>
+      <th>Link</th><th>Notes</th><th></th>
     </tr></thead><tbody id="body-links"></tbody></table></div>
   </div>
 
