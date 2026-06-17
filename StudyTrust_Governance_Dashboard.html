@@ -1287,10 +1287,10 @@ body{font-family:Aptos,'Segoe UI',Calibri,sans-serif;font-size:14px;color:var(--
     <div class="modal-body">
       <div class="info-box info-bl">Create 3 lists in SharePoint. Title exists automatically — do not create it. Use exact column names as shown.</div>
       <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">GovPolicies</p>
-      <div class="cg"><span>Title</span><em> Text (built-in = policy title)</em> · <span>PolicyID</span><em> Text</em> · <span>Category</span><em> Text</em> · <span>Tier</span><em> Text</em> · <span>PolicyVersion</span><em> Text</em> · <span>Status</span><em> Choice*</em> · <span>Risk</span><em> Text</em> · <span>Approver</span><em> Text</em> · <span>ReviewDate</span><em> Date</em> · <span>Owner</span><em> Text</em> · <span>Custodian</span><em> Text</em> · <span>Notes</span><em> Text (ADD — rationale / requestor for Proposed items)</em> · <span>DraftUrl</span><em> Text</em> · <span>PublishedUrl</span><em> Text</em> · <span>ArchiveUrl</span><em> Text</em></div>
+      <div class="cg"><span>Title</span><em> Text (built-in = policy title)</em> · <span>PolicyID</span><em> Text</em> · <span>Category</span><em> Text</em> · <span>Tier</span><em> Text</em> · <span>PolicyVersion</span><em> Text</em> · <span>Status</span><em> Choice*</em> · <span>Risk</span><em> Text</em> · <span>Approver</span><em> Text</em> · <span>ReviewDate</span><em> Date</em> · <span>Owner</span><em> Text</em> · <span>Custodian</span><em> Text</em> · <span>Notes</span><em> Text</em> · <span>DraftUrl</span><em> Text</em> · <span>PublishedUrl</span><em> Text</em> · <span>ArchiveUrl</span><em> Text</em></div>
       <p style="font-size:10px;color:var(--tx3);margin-bottom:10px">*Status choices: Initiated · Draft · Consult · PTT Review · Approved · New · Published · Review Due · Archived</p>
       <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">GovSOPs</p>
-      <div class="cg"><span>Title</span><em> Text (built-in = SOP title)</em> · <span>SopID</span><em> Text</em> · <span>Category</span><em> Text</em> · <span>LinkedPolicy</span><em> Text</em> · <span>SopVersion</span><em> Text</em> · <span>Status</span><em> Choice*</em> · <span>ReviewDate</span><em> Date</em> · <span>Owner</span><em> Text</em> · <span>Custodian</span><em> Text (ADD this column)</em> · <span>Notes</span><em> Text (ADD — rationale / requestor for Proposed items)</em> · <span>DraftUrl</span><em> Text</em> · <span>PublishedUrl</span><em> Text</em> · <span>ArchiveUrl</span><em> Text</em></div>
+      <div class="cg"><span>Title</span><em> Text (built-in = SOP title)</em> · <span>SopID</span><em> Text</em> · <span>Category</span><em> Text</em> · <span>LinkedPolicy</span><em> Text</em> · <span>SopVersion</span><em> Text</em> · <span>Status</span><em> Choice*</em> · <span>ReviewDate</span><em> Date</em> · <span>Owner</span><em> Text</em> · <span>Custodian</span><em> Text</em> · <span>Notes</span><em> Text</em> · <span>DraftUrl</span><em> Text</em> · <span>PublishedUrl</span><em> Text</em> · <span>ArchiveUrl</span><em> Text</em></div>
       <p style="font-size:11px;font-weight:700;color:var(--st);margin-bottom:5px">GovChangelog</p>
       <div class="cg"><span>Title</span><em> Text (built-in = change note)</em> · <span>DocID</span><em> Text</em> · <span>DocType</span><em> Text (pol/sop)</em> · <span>FromStatus</span><em> Text</em> · <span>ToStatus</span><em> Text</em> · <span>ChangedBy</span><em> Text</em> · <span>ChangeDate</span><em> Date</em></div>
     </div>
@@ -1563,8 +1563,8 @@ async function spPatch(listName,itemId,fields){
 // Columns that may not yet exist in SharePoint — gracefully skip if they cause errors.
 // Simon must create these columns to enable full functionality (see Admin Manual Section 2.2).
 const SP_OPTIONAL_COLS = {
-  sop: ['Custodian', 'Notes'],   // not yet in GovSOPs — Simon adds: Single line of text
-  pol: ['Notes']                  // not yet in GovPolicies — Simon adds: Single line of text
+  sop: [],   // Custodian + Notes added to GovSOPs (2026-06)
+  pol: []    // Notes added to GovPolicies (2026-06)
 };
 
 async function spPatchResilient(listName, itemId, fields, docType) {
