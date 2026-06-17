@@ -479,7 +479,7 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
     <div class="tw"><table><thead><tr>
       <th class="n">#</th><th style="min-width:155px">Weakness</th><th style="min-width:175px">Recommendation</th>
       <th>Compliance Date</th><th>Status</th><th>Responsible</th><th>Shadower</th>
-      <th>Document Category</th><th>Upload / Link</th><th>Document Name</th>
+      <th>Document Category</th><th>Upload / Link</th><th style="min-width:140px">Comments</th>
     </tr></thead><tbody id="body-recommendations"></tbody></table></div>
   </div>
 
@@ -592,7 +592,7 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
     <div class="tw"><table><thead><tr>
       <th class="n">#</th>
       <th style="min-width:220px">Question</th>
-      <th>Source</th><th>Status</th><th>Responsible</th>
+      <th>Source</th><th>Status</th><th>Compliance Date</th><th>Responsible</th>
       <th style="min-width:280px">Answer / Response</th><th>Notes</th>
     </tr></thead><tbody id="body-questions"></tbody></table></div>
   </div>
@@ -794,12 +794,12 @@ const F = {
   auditorRequests: { date:'RequestDate', requestedBy:'RequestedBy', description:'Title', urgency:'Urgency', status:'Status', assignedTo:'AssignedTo', dateResolved:'DateResolved', responseLink:'ResponseLink', notes:'Notes' },
   responseLinks:   { requestId:'RequestId', docName:'DocName', docLink:'DocLink', uploadedBy:'UploadedBy', uploadedDate:'UploadedDate', notes:'Notes' },
   links:           { requestId:'RequestId', docName:'DocName', docLink:'DocLink', uploadedBy:'UploadedBy', uploadedDate:'UploadedDate', notes:'Notes' },
-  questions:       { desc:'Title', source:'Source', answer:'Answer', status:'Status', responsible:'Responsible', notes:'Notes' },
+  questions:       { desc:'Title', source:'Source', answer:'Answer', status:'Status', complianceDate:'ComplianceDate', responsible:'Responsible', notes:'Notes' },
   personnel:       { desc:'Title', dueDate:'DueDate', uploaded:'Uploaded', status:'Status', responsible:'Responsible', docName:'DocName', docLink:'DocLink0', notes:'Notes', accessLevel:'AccessLevel' },
   config:          { id:'Year', label:'Label', fyEnd:'FYEnd', deadline:'Deadline', auditStart:'AuditStart', shadower:'Shadower', firm:'Firm' }
 };
 
-const DATE_FIELDS = new Set(['dueDate','uploaded','dateRequested','dateConnected','dateSubmitted','dateResolved','date','fyEnd','deadline','auditStart','FYEnd','Deadline','AuditStart','DateRequested','DateConnected','DateSubmitted','DateResolved','RequestDate','Uploaded']);
+const DATE_FIELDS = new Set(['dueDate','uploaded','dateRequested','dateConnected','dateSubmitted','dateResolved','date','fyEnd','deadline','auditStart','complianceDate','FYEnd','Deadline','AuditStart','DateRequested','DateConnected','DateSubmitted','DateResolved','RequestDate','Uploaded','ComplianceDate']);
 
 const HYPERLINK_FIELDS = new Set(['responseLink']); // DocLink changed to Multiple Lines — treated as plain text
 
@@ -1447,7 +1447,7 @@ function renderRec(items,body){
     <td>${textIn(it.shadower,'recommendations',it.id,'shadower','it')}</td>
     <td>${docCatSel(it.docName,'recommendations',it.id)}</td>
     <td style="white-space:nowrap">${uploadBtn(it,'recommendations')}</td>
-    <td>${textIn(it.comments,'recommendations',it.id,'comments','it')}${delBtn('recommendations',it.id)}</td>
+    <td class="dc">${textIn(it.comments,'recommendations',it.id,'comments','dc')}${delBtn('recommendations',it.id)}</td>
   </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px;font-size:12px">No recommendations yet.</td></tr>`;
 }
 
@@ -1508,11 +1508,12 @@ function renderQuestions(items,body){
       <td class="dc">${textIn(it.desc,'questions',it.id,'desc','dc')}</td>
       <td>${srcSel}</td>
       <td>${sSel}</td>
+      <td>${dateIn(it.complianceDate,'questions',it.id,'complianceDate')}</td>
       <td>${textIn(it.responsible,'questions',it.id,'responsible','it')}</td>
       <td>${ansCell}</td>
       <td>${textIn(it.notes,'questions',it.id,'notes','it')}${delBtn('questions',it.id)}</td>
     </tr>`;
-  }).join('')||`<tr><td colspan="7" style="text-align:center;color:#aaa;padding:14px">No questions yet.</td></tr>`;
+  }).join('')||`<tr><td colspan="8" style="text-align:center;color:#aaa;padding:14px">No questions yet.</td></tr>`;
 }
 
 function renderPersonnel(items,body){
@@ -1521,7 +1522,7 @@ function renderPersonnel(items,body){
     const accSel=`<select class="ie is" onchange="quickSave('personnel','${it.id}','accessLevel',this.value,this)">${accessOpts.map(s=>`<option${s===it.accessLevel?' selected':''}>${s}</option>`).join('')}</select>`;
     return `<tr>
       <td class="n">${i+1}</td>
-      <td class="dc">${textIn(it.desc,'personnel',it.id,'desc','it')}</td>
+      <td class="dc">${textIn(it.desc,'personnel',it.id,'desc','dc')}</td>
       <td>${dateIn(it.dueDate,'personnel',it.id,'dueDate')}</td>
       <td>${dateIn(it.uploaded,'personnel',it.id,'uploaded')}</td>
       <td>${statusSel(it.status,'personnel',it.id)}</td>
@@ -1838,8 +1839,8 @@ async function handleFileUpload(input){
     showLoad('Uploading '+file.name+'…');
     if(folder) await spCreateFolder(libName,folder);
     const link=await spUploadFile(libName,folder,file);
-    item.docLink=link; item.uploaded=today();
-    await spPatch(getListName(pu.tab),pu.id,{DocLink0:link,Uploaded:today()+'T00:00:00Z',Notes:item.notes||file.name});
+    item.docLink=link; item.uploaded=today(); item.notes=item.notes||file.name;
+    await spPatch(getListName(pu.tab),pu.id,{DocLink0:link,Uploaded:today()+'T00:00:00Z',Notes:item.notes});
     renderTab(pu.tab);
     showToast('Uploaded: '+file.name,'ok');
   }catch(e){showToast('Upload error [lib: '+libName+', folder: '+folder+']: '+e.message,'err');}finally{hideLoad();}
