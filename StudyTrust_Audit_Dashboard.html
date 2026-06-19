@@ -477,9 +477,9 @@ td.dc{min-width:220px;width:260px}.ita{width:100%;min-width:200px;min-height:42p
       <select id="f-recommendations-s" onchange="filterTab('recommendations')"><option value="">All Statuses</option></select>
     </div>
     <div class="tw"><table class="tbl-fit"><colgroup>
-      <col style="width:2.5%"><col style="width:15%"><col style="width:15%">
-      <col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:7%">
-      <col style="width:11%"><col style="width:10%"><col style="width:14.5%">
+      <col style="width:2.5%"><col style="width:16%"><col style="width:15%">
+      <col style="width:8%"><col style="width:9%"><col style="width:5%"><col style="width:7%">
+      <col style="width:11%"><col style="width:10%"><col style="width:16.5%">
     </colgroup><thead><tr>
       <th class="n">#</th><th>Weakness</th><th>Recommendation</th>
       <th>Compliance Date</th><th>Status</th><th>Responsible</th><th>Shadower</th>
@@ -1237,11 +1237,22 @@ async function loadAndRender(){
 
 async function detectPersonnelAccess(){
   try{
-    const token=await getToken();
     const me=await graphFetch('/me');
+    userName=me.displayName||me.userPrincipalName||userName;
+    document.getElementById('user-name').textContent=userName;
     // Use transitiveMemberOf so nested group membership is also detected
     const groups=await graphFetch('/me/transitiveMemberOf?$top=999');
     hasPersonnelAccess=(groups.value||[]).some(g=>(g.displayName||'').includes('HR-Authorised-Personnel'));
+    // Lock external auditors (TPCSA) into auditor mode automatically
+    const isExtAuditor=(groups.value||[]).some(g=>g.id==='f909ea9f-c4d6-4c4b-aa51-99d773e6a106');
+    if(isExtAuditor){
+      setRole('auditor');
+      const toggle=document.getElementById('role-toggle');
+      if(toggle) toggle.style.display='none';
+      // Pre-fill the request name field with their display name
+      const nameIn=document.getElementById('req-name');
+      if(nameIn&&!nameIn.value) nameIn.value=userName;
+    }
   }catch(e){ hasPersonnelAccess=false; }
 }
 
@@ -1259,7 +1270,7 @@ function setRole(role){
     banner.className='admin-mode'; banner.textContent='Admin Mode — Changes save live to SharePoint';
     badge.className='admin'; badge.textContent='Admin';
   } else {
-    banner.className='auditor-mode'; banner.textContent='Auditor View — Read only, except submitting new Questions';
+    banner.className='auditor-mode'; banner.textContent='Auditor View — Submit new document requests and questions. Documents and settings are read-only.';
     badge.className='auditor'; badge.textContent='Auditor';
   }
   const qNote=document.getElementById('q-auditor-note');
@@ -1477,7 +1488,7 @@ function renderRec(items,body){
     <td>${textIn(it.responsible,'recommendations',it.id,'responsible','it')}</td>
     <td>${textIn(it.shadower,'recommendations',it.id,'shadower','it')}</td>
     <td>${docCatSel(it.docName,'recommendations',it.id)}</td>
-    <td style="white-space:nowrap">${uploadBtn(it,'recommendations')}</td>
+    <td>${uploadBtn(it,'recommendations')}</td>
     <td class="dc">${textIn(it.comments,'recommendations',it.id,'comments','dc')}${delBtn('recommendations',it.id)}</td>
   </tr>`).join('')||`<tr><td colspan="10" style="text-align:center;color:#aaa;padding:14px;font-size:12px">No recommendations yet.</td></tr>`;
 }
@@ -1664,9 +1675,14 @@ function renderAudMyRequests(){
   const my=reqItems.filter(x=>x.requestedBy&&x.requestedBy===document.getElementById('req-name')?.value);
   document.getElementById('my-req-list').innerHTML=my.map(it=>{
     const cls={Open:'sb-Not-Started',Submitted:'sb-In-progress','In Progress':'sb-In-progress',Resolved:'sb-Completed',Closed:'sb-Completed'}[it.status]||'';
+    const safeNotes=(it.notes||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     return `<div class="dc2" style="margin-bottom:8px;padding:10px 14px">
       <div style="display:flex;justify-content:space-between"><strong style="font-size:12px">${it.description||''}</strong><span class="sb ${cls}">${it.status||''}</span></div>
       <div style="font-size:11px;color:#888;margin-top:4px">Submitted ${fmt(it.date)} · Urgency: ${it.urgency||'Normal'} · Assigned: ${it.assignedTo||'—'}</div>
+      <div style="margin-top:8px">
+        <label style="font-size:11px;color:#666;font-weight:600">Add a comment or note (optional)</label>
+        <textarea id="req-note-${it.id}" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:11px;padding:5px 7px;border:1px solid #ddd;border-radius:4px;resize:vertical;min-height:48px" placeholder="Add a comment, clarification, or follow-up note…" onblur="saveRequestNote('${it.id}')">${safeNotes}</textarea>
+      </div>
     </div>`;
   }).join('')||`<div style="color:#aaa;font-size:12px;padding:10px 0">No requests submitted yet.</div>`;
 }
@@ -1931,6 +1947,18 @@ async function submitRequest(){
     renderAudMyRequests();
     showToast('Request submitted','ok');
   }catch(e){showToast(e.message,'err');}finally{hideLoad();}
+}
+
+async function saveRequestNote(id){
+  const el=document.getElementById('req-note-'+id);
+  if(!el)return;
+  const val=el.value;
+  const item=reqItems.find(x=>x.id===id);
+  if(!item||item.notes===val)return; // no change
+  try{
+    await spPatch(LISTS.auditorRequests,id,{Notes:val});
+    item.notes=val;
+  }catch(e){showToast('Could not save note: '+e.message,'err');}
 }
 
 // ════════════════════════════════════════════════
