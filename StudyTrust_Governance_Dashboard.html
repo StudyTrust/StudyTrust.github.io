@@ -103,6 +103,7 @@ body{font-family:Aptos,'Segoe UI',Calibri,sans-serif;font-size:14px;color:var(--
 .ban-personnel{background:var(--st-p);color:var(--st-m);border-bottom:1px solid var(--st-l)}
 .ban-auditor{background:#d1fae5;color:#065f46;border-bottom:1px solid #6ee7b7}
 .ban-ptt{background:#fde7dc;color:#7a2e0b;border-bottom:1px solid #f15a29}
+.ban-legal{background:#ede9fe;color:#4c1d95;border-bottom:1px solid #7c3aed}
 
 /* ── TABS ── */
 .tabs{background:var(--sur);border-bottom:2px solid var(--st-l);padding:0 20px;position:sticky;top:52px;z-index:190;display:flex;overflow-x:auto;scrollbar-width:none}
@@ -1657,7 +1658,7 @@ function toSpTrustee(t){const f={};for(const[ak,sk]of Object.entries(TR_MAP)){co
 function fromSpTrustee(sp){const f=sp.fields||{},t={_spId:sp.id};for(const[ak,sk]of Object.entries(TR_MAP)){let v=f[sk];if(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v))v=v.substring(0,10);t[ak]=v||'';}return t;}
 let currentRole='personnel', userName='User';
 let statusTarget=null, urlTarget=null;
-let ADMIN_GROUP='Dashboards - Governance-Admins', TRUSTEE_GROUP='Dashboards - Board-of-Trustees', AUDITOR_GROUP='Dashboards - External-Auditors', PTT_GROUP='Dashboards - Policy Task Team';
+let ADMIN_GROUP='Dashboards - Governance-Admins', TRUSTEE_GROUP='Dashboards - Board-of-Trustees', AUDITOR_GROUP='Dashboards - External-Auditors', PTT_GROUP='Dashboards - Policy Task Team', PUBLISHERS_GROUP='Dashboards - Policy-Publishers', LEGAL_REVIEWER_GROUP='Dashboards - Legal-Reviewer';
 
 // Load group config from localStorage
 function loadGroupConfig(){
@@ -1672,6 +1673,8 @@ function loadGroupConfig(){
   TRUSTEE_GROUP=cfg.trustee||'Dashboards - Board-of-Trustees';
   AUDITOR_GROUP=cfg.auditor||'Dashboards - External-Auditors';
   PTT_GROUP=cfg.ptt||'Dashboards - Policy Task Team';
+  PUBLISHERS_GROUP=cfg.publishers||'Dashboards - Policy-Publishers';
+  LEGAL_REVIEWER_GROUP=cfg.legal||'Dashboards - Legal-Reviewer';
   const ag=document.getElementById('cfg-admin-grp'), tg=document.getElementById('cfg-trustee-grp'), aug=document.getElementById('cfg-auditor-grp'), pg=document.getElementById('cfg-ptt-grp');
   if(ag) ag.value=ADMIN_GROUP; if(tg) tg.value=TRUSTEE_GROUP; if(aug) aug.value=AUDITOR_GROUP; if(pg) pg.value=PTT_GROUP;
 }
@@ -1680,8 +1683,10 @@ function saveGroupConfig(){
   const tg=document.getElementById('cfg-trustee-grp').value.trim();
   const aug=document.getElementById('cfg-auditor-grp').value.trim();
   const pg=(document.getElementById('cfg-ptt-grp')||{}).value?document.getElementById('cfg-ptt-grp').value.trim():PTT_GROUP;
-  localStorage.setItem('st_gov_group_cfg',JSON.stringify({admin:ag,trustee:tg,auditor:aug,ptt:pg}));
-  ADMIN_GROUP=ag; TRUSTEE_GROUP=tg; AUDITOR_GROUP=aug; PTT_GROUP=pg;
+  const pubg=(document.getElementById('cfg-publishers-grp')||{}).value?document.getElementById('cfg-publishers-grp').value.trim():PUBLISHERS_GROUP;
+  const lg=(document.getElementById('cfg-legal-grp')||{}).value?document.getElementById('cfg-legal-grp').value.trim():LEGAL_REVIEWER_GROUP;
+  localStorage.setItem('st_gov_group_cfg',JSON.stringify({admin:ag,trustee:tg,auditor:aug,ptt:pg,publishers:pubg,legal:lg}));
+  ADMIN_GROUP=ag; TRUSTEE_GROUP=tg; AUDITOR_GROUP=aug; PTT_GROUP=pg; PUBLISHERS_GROUP=pubg; LEGAL_REVIEWER_GROUP=lg;
   toast('Group configuration saved.','success');
 }
 function resetGroupConfig(){
@@ -1691,6 +1696,8 @@ function resetGroupConfig(){
   TRUSTEE_GROUP='Dashboards - Board-of-Trustees';
   AUDITOR_GROUP='Dashboards - External-Auditors';
   PTT_GROUP='Dashboards - Policy Task Team';
+  PUBLISHERS_GROUP='Dashboards - Policy-Publishers';
+  LEGAL_REVIEWER_GROUP='Dashboards - Legal-Reviewer';
   loadGroupConfig();
   toast('Group names reset to defaults. Sign out and back in to re-detect your role.','success');
 }
@@ -1708,6 +1715,7 @@ async function detectRole(){
     if(_diagGroups.some(g=>g.toLowerCase()===ADMIN_GROUP.toLowerCase())){ _diagRole='admin'; return 'admin'; }
     if(_diagGroups.some(g=>g.toLowerCase()===TRUSTEE_GROUP.toLowerCase())){ _diagRole='trustee'; return 'trustee'; }
     if(_diagGroups.some(g=>g.toLowerCase()===PTT_GROUP.toLowerCase())){ _diagRole='ptt'; return 'ptt'; }
+    if(_diagGroups.some(g=>g.toLowerCase()===LEGAL_REVIEWER_GROUP.toLowerCase())){ _diagRole='legal'; return 'legal'; }
     if(_diagGroups.some(g=>g.toLowerCase()===AUDITOR_GROUP.toLowerCase())){ _diagRole='auditor'; return 'auditor'; }
     _diagRole='personnel';
   }catch(e){
@@ -1939,7 +1947,7 @@ function renderPol(){
   const ql=q.toLowerCase();
 
   // Admin and PTT see all statuses; trustees, auditors and personnel see only published
-  const seesAll = currentRole==='admin' || currentRole==='ptt';
+  const seesAll = currentRole==='admin' || currentRole==='ptt' || currentRole==='legal';
   const visibleData = seesAll ? polData : polData.filter(p=>isPublished(p.status));
 
   const tbody=document.getElementById('pol-body'); if(!tbody) return;
@@ -1957,7 +1965,7 @@ function renderPol(){
     if(prf&&p.reviewDate&&p.reviewDate<prf) return;
     if(prt&&p.reviewDate&&p.reviewDate>prt) return;
     shown++;
-    const canChange = (currentRole==='admin') || (currentRole==='ptt' && allowedTransitions(p.status,'ptt').length>0);
+    const canChange = (currentRole==='admin') || (currentRole==='ptt' && allowedTransitions(p.status,'ptt').length>0) || (currentRole==='legal' && allowedTransitions(p.status,'legal').length>0);
     const act = canChange
       ? `<td onclick="event.stopPropagation()"><button class="btn btn-sec btn-sm" onclick="openStatusModal('${esc(p.polId)}','pol','${esc(p.status)}')">Change Status</button></td>`
       : (seesAll ? '<td></td>' : '');
@@ -2022,7 +2030,7 @@ function renderSop(){
   const srt=(document.getElementById('sop-rev-to')||{}).value||'';
   const ql=q.toLowerCase();
 
-  const seesAll = currentRole==='admin' || currentRole==='ptt';
+  const seesAll = currentRole==='admin' || currentRole==='ptt' || currentRole==='legal';
   const visibleData = seesAll ? sopData : sopData.filter(s=>isPublished(s.status));
 
   const tbody=document.getElementById('sop-body'); if(!tbody) return;
@@ -2037,7 +2045,7 @@ function renderSop(){
     if(srf&&s.reviewDate&&s.reviewDate<srf) return;
     if(srt&&s.reviewDate&&s.reviewDate>srt) return;
     shown++;
-    const canChange = (currentRole==='admin') || (currentRole==='ptt' && allowedTransitions(s.status,'ptt').length>0);
+    const canChange = (currentRole==='admin') || (currentRole==='ptt' && allowedTransitions(s.status,'ptt').length>0) || (currentRole==='legal' && allowedTransitions(s.status,'legal').length>0);
     const act = canChange
       ? `<td onclick="event.stopPropagation()"><button class="btn btn-sec btn-sm" onclick="openStatusModal('${esc(s.sopId)}','sop','${esc(s.status)}')">Change Status</button></td>`
       : (seesAll ? '<td></td>' : '');
@@ -2188,7 +2196,7 @@ function renderChangelog(){
 }
 
 function renderAll(){
-  const gsw=document.getElementById('gs-wrap'); if(gsw) gsw.style.display=(currentRole==='admin'||currentRole==='ptt')?'block':'none';
+  const gsw=document.getElementById('gs-wrap'); if(gsw) gsw.style.display=(currentRole==='admin'||currentRole==='ptt'||currentRole==='legal')?'block':'none';
   renderExec();
   renderPol();
   renderSop();
@@ -2355,6 +2363,14 @@ async function applyStatus(){
   const note=document.getElementById('f-status-note').value.trim();
   if(!note){toast('Change notes are mandatory for audit trail compliance.','warning');return;}
 
+  // Publisher gate — only admins and members of Dashboards - Policy-Publishers may publish
+  if(selStatus==='Published' && currentRole !== 'admin'){
+    if(!_diagGroups.some(g=>g.toLowerCase()===PUBLISHERS_GROUP.toLowerCase())){
+      toast('Only authorised publishers may set a document to Published status.','error');
+      return;
+    }
+  }
+
   // Validate URL fields for publishing/archiving transitions
   if(selStatus==='Published'){
     const pubUrl=(document.getElementById('f-pub-url')||{}).value||'';
@@ -2414,7 +2430,7 @@ function openUrlModal(docId,type){
   document.getElementById('f-url-pub').value=doc?.publishedUrl||'';
   document.getElementById('f-url-arch').value=doc?.archiveUrl||'';
   // PTT scope: lock Published and Archive URL fields (read-only)
-  const isP = currentRole === 'ptt';
+  const isP = currentRole === 'ptt' || currentRole === 'legal';
   const pub = document.getElementById('f-url-pub');
   const arc = document.getElementById('f-url-arch');
   [pub,arc].forEach(el=>{
@@ -3089,11 +3105,12 @@ function allowedTransitions(currentStatus, role){
   const all = STATUS_FLOW[currentStatus] || [];
   if(role === 'admin') return all;
   if(role === 'ptt')   return all.filter(s => s !== 'Published' && s !== 'Archived');
+  if(role === 'legal') return all.filter(s => s !== 'Published' && s !== 'Archived');
   return [];
 }
 
 function buildTabs(){
-  const tabs=currentRole==='admin'?TABS_ADMIN:currentRole==='trustee'?TABS_TRUSTEE:currentRole==='auditor'?TABS_AUDITOR:currentRole==='ptt'?TABS_PTT:TABS_PERSONNEL;
+  const tabs=currentRole==='admin'?TABS_ADMIN:currentRole==='trustee'?TABS_TRUSTEE:currentRole==='auditor'?TABS_AUDITOR:currentRole==='ptt'?TABS_PTT:currentRole==='legal'?TABS_PTT:TABS_PERSONNEL;
   document.getElementById('tab-bar').innerHTML=tabs.map((t,i)=>`<button class="tab${i===0?' on':''}" onclick="showTab('${t.id}',this)">${t.l}</button>`).join('');
 }
 
@@ -3114,19 +3131,20 @@ function setRole(role){
   const rbpt=document.getElementById('rb-pt'); if(rbpt) rbpt.classList.toggle('on',role==='ptt');
 
   const badge=document.getElementById('role-badge');
-  const labels={admin:'Admin',trustee:'Trustee',auditor:'External Auditor',personnel:'All Personnel',ptt:'PTT (Policy Task Team)'};
-  const badgeCls={admin:'rb-admin',trustee:'rb-trustee',auditor:'rb-auditor',personnel:'rb-personnel',ptt:'rb-ptt'};
+  const labels={admin:'Admin',trustee:'Trustee',auditor:'External Auditor',personnel:'All Personnel',ptt:'PTT (Policy Task Team)',legal:'Legal Reviewer'};
+  const badgeCls={admin:'rb-admin',trustee:'rb-trustee',auditor:'rb-auditor',personnel:'rb-personnel',ptt:'rb-ptt',legal:'rb-ptt'};
   badge.textContent=labels[role]||'All Personnel';
   badge.className='role-badge '+(badgeCls[role]||'rb-personnel');
 
   const banner=document.getElementById('role-banner');
-  const bannerCls={admin:'ban-admin',trustee:'ban-trustee',auditor:'ban-auditor',personnel:'ban-personnel',ptt:'ban-ptt'};
+  const bannerCls={admin:'ban-admin',trustee:'ban-trustee',auditor:'ban-auditor',personnel:'ban-personnel',ptt:'ban-ptt',legal:'ban-legal'};
   const bannerText={
     admin:'Admin Mode — Full access. All changes save live to SharePoint.',
     trustee:'Trustee View — Dashboards - Board-of-Trustees access. Published policies and governance information.',
     auditor:'External Auditor View — Read-only access to published documents. Use Document Requests to request additional information.',
     personnel:'All Personnel View — Published policies and SOPs only.',
-    ptt:'PTT View — Review and edit drafts (Step 4 of the governance process). You cannot publish, archive, or change hub structure.'
+    ptt:'PTT View — Review and edit drafts (Step 4 of the governance process). You cannot publish, archive, or change hub structure.',
+    legal:'Legal Reviewer View — Review and annotate drafts. You cannot publish, archive, or change hub structure.'
   };
   banner.className=bannerCls[role]||'ban-personnel';
   banner.textContent=bannerText[role]||bannerText.personnel;
@@ -4244,40 +4262,4 @@ async function provisionGovTraining() {
     const sopResp = await gFetch(`/sites/${siteId}/lists?$filter=displayName eq 'GovSOPs'`);
     const sopListId = sopResp.value[0].id;
     await gFetch(`/sites/${siteId}/lists/${sopListId}/columns`, {method:'POST',body:JSON.stringify({name:'SOBCompliant',choice:{displayAs:'dropDownMenu',choices:['Yes','No','Pending']}})});
-    await gFetch(`/sites/${siteId}/lists/${sopListId}/columns`, {method:'POST',body:JSON.stringify({name:'SOBReviewDate',dateTime:{displayAs:'dateOnly'}})});
-    await gFetch(`/sites/${siteId}/lists/${sopListId}/columns`, {method:'POST',body:JSON.stringify({name:'SOBReviewedBy',text:{}})});
-    addLog('SOB columns added to GovSOPs.', true);
-    addLog('Provisioning complete. Reload the Hub to connect the Training tab.', true);
-    if (btn) btn.textContent = '✅ Done';
-  } catch (err) {
-    addLog('Error: ' + err.message, false);
-    if (btn) { btn.disabled = false; btn.textContent = '⚙ Provision GovTraining'; }
-  }
-}
-
-function _injectModal(id, bodyHtml, accentColour) {
-  _closeModal(id);
-  const colour = accentColour || '#226397';
-  document.body.insertAdjacentHTML('beforeend', `
-    <div id="${id}" onclick="if(event.target===this)_closeModal('${id}')"
-      style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9000;
-             display:flex;align-items:center;justify-content:center;padding:20px;">
-      <div style="background:#fff;border-radius:8px;border-top:4px solid ${colour};
-                  padding:28px;width:100%;max-width:600px;max-height:90vh;
-                  overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3);">
-        ${bodyHtml}
-      </div>
-    </div>`);
-}
-
-function _closeModal(id) {
-  const el = document.getElementById(id);
-  if (el) el.remove();
-}
-
-  
-</script>
-<input type="file" id="gov-file-input" style="display:none" onchange="handleGovFileUpload(this)">
-<input type="file" id="gov-multi-input" style="display:none" multiple onchange="handleGovMultiUpload(this)">
-</body>
-</html>
+    await gFetch(`/sites/${siteId}/lists/$
