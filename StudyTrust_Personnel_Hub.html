@@ -397,6 +397,58 @@ body{font-family:Aptos,'Segoe UI',Calibri,sans-serif;font-size:14px;color:var(--
   </div>
 </section>
 
+<!-- ── LEAVE ── -->
+<section id="sec-leave" class="sec">
+  <div class="g-kpi" id="leave-kpi" style="margin-bottom:14px"></div>
+
+  <!-- Pending approvals panel -->
+  <div id="leave-approvals-wrap">
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-hd">⏳ Pending Approvals
+        <span id="leave-pending-count" style="font-size:11px;color:var(--tx3)"></span>
+      </div>
+      <div class="card-body" id="leave-approvals-body">
+        <div style="font-size:12px;color:var(--tx3)">No pending leave requests.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave register table -->
+  <div class="card">
+    <div class="card-hd">Leave Register
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-pri btn-sm" onclick="openLeaveForm()">+ Submit Leave</button>
+        <button class="btn btn-sec btn-sm" onclick="exportXlsx('leave')">⬇ XLSX</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <select id="lv-f-status" onchange="renderLeave()">
+        <option value="">All Statuses</option>
+        <option>Pending Stage 1</option><option>Pending Stage 2</option>
+        <option>Approved</option><option>Declined</option><option>Cancelled</option>
+      </select>
+      <select id="lv-f-type" onchange="renderLeave()">
+        <option value="">All Leave Types</option>
+        <option>Annual Leave</option><option>Sick Leave</option>
+        <option>Family Responsibility</option><option>Study/Examination</option>
+        <option>Parental Leave</option><option>Paternity Leave</option>
+        <option>Parental/Adoption Leave</option><option>Prolonged Ill-Health</option>
+        <option>December Office Closure</option>
+      </select>
+      <select id="lv-f-cluster" onchange="renderLeave()"><option value="">All Clusters</option></select>
+    </div>
+    <div class="tbl-wrap"><table class="dt">
+      <thead><tr>
+        <th>Employee</th><th>Leave Type</th><th>From</th><th>To</th>
+        <th>Days</th><th>Status</th><th>Submitted</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="leave-tbody"></tbody>
+    </table></div>
+    <div id="leave-empty" style="padding:22px;text-align:center;color:var(--tx3);font-size:12px;display:none">No leave records found.</div>
+  </div>
+</section>
+
+
 <!-- ── DIRECTORY ── -->
 <section id="sec-directory" class="sec">
   <div class="card">
@@ -806,6 +858,55 @@ body{font-family:Aptos,'Segoe UI',Calibri,sans-serif;font-size:14px;color:var(--
   </div>
 </div>
 
+<!-- LEAVE REQUEST -->
+<div class="modal-ov" id="m-leave">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-hd"><span class="modal-title" id="leave-modal-title">Submit Leave Request</span><button class="modal-x" onclick="closeM('m-leave')">&#x2715;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="lv-sp-id">
+      <div class="f-row"><label>Leave Type *</label>
+        <select id="lv-type">
+          <option value="">— select —</option>
+          <option>Annual Leave</option><option>Sick Leave</option>
+          <option>Family Responsibility</option><option>Study/Examination</option>
+          <option>Parental Leave</option><option>Paternity Leave</option>
+          <option>Parental/Adoption Leave</option><option>Prolonged Ill-Health</option>
+          <option>December Office Closure</option>
+        </select>
+      </div>
+      <div class="f-grid">
+        <div class="f-row"><label>Start Date *</label><input type="date" id="lv-start" onchange="calcLeaveDays()"></div>
+        <div class="f-row"><label>End Date *</label><input type="date" id="lv-end" onchange="calcLeaveDays()"></div>
+      </div>
+      <div class="f-row"><label>Working Days</label><input type="number" id="lv-days" min="0.5" step="0.5" placeholder="Auto-calculated from dates"></div>
+      <div class="f-row"><label>Reason / Notes</label><textarea id="lv-reason" rows="3"></textarea></div>
+      <div class="f-row"><label>Supporting Document URL (optional)</label><input type="text" id="lv-docsurl" placeholder="https://studietrust.sharepoint.com/…"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sec" onclick="closeM('m-leave')">Cancel</button>
+      <button class="btn btn-pri" onclick="saveLeave()">Submit Request →</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEAVE APPROVAL -->
+<div class="modal-ov" id="m-leave-approve">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-hd"><span class="modal-title">Review Leave Request</span><button class="modal-x" onclick="closeM('m-leave-approve')">&#x2715;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="lva-sp-id">
+      <div id="lva-details" style="background:var(--st-p);border-radius:8px;padding:14px;margin-bottom:14px;font-size:12px;line-height:1.85"></div>
+      <div class="f-row"><label>Notes (optional)</label><textarea id="lva-notes" rows="3" placeholder="Reason for approval or decline…"></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-sec" onclick="closeM('m-leave-approve')">Cancel</button>
+      <button class="btn btn-rd" onclick="decideLeave('Declined')">Decline</button>
+      <button class="btn btn-pri" onclick="decideLeave('Approved')">Approve →</button>
+    </div>
+  </div>
+</div>
+
+
 <!-- COLUMN GUIDE -->
 <div class="modal-ov" id="m-guide">
   <div class="modal modal-lg">
@@ -851,10 +952,11 @@ const GRAPH       = 'https://graph.microsoft.com/v1.0';
 
 const LISTS = {
   personnel:  'PersonnelRegister',
-  alerts:     'PersonnelAlerts',
-  ir:         'PersonnelIR',
-  onboarding: 'PersonnelOnboarding',
-  coi:        'PersonnelCOI'
+  leave:      'LeaveRequests',
+  alerts:     'HRAlertsLog',
+  ir:         'IRCases',
+  onboarding: 'OnboardingTracker',
+  clusters:   'Clusters'
 };
 
 const DEFAULT_CLUSTERS = [
@@ -889,7 +991,7 @@ let msalInstance, accessToken;
 let currentRole  = 'employee';
 let currentUser  = { name:'', email:'' };
 let userCluster  = null; // for cluster manager filtering
-let appData      = { personnel:[], alerts:[], ir:[], onboarding:[], coi:[] };
+let appData      = { personnel:[], leave:[], alerts:[], ir:[], onboarding:[] };
 let clusters     = [];
 let groups       = {};
 let webhooks     = { hr:'', cluster:'', mgmt:'' };
@@ -904,15 +1006,13 @@ const MSAL_CFG = {
   cache:{ cacheLocation:'sessionStorage', storeAuthStateInCookie:true }
 };
 
-const SCOPES = ['User.Read','Sites.ReadWrite.All'];
+const SCOPES = ['User.Read','Sites.ReadWrite.All','Sites.Manage.All','GroupMember.Read.All'];
 
 async function doSignIn(){
   const btn = document.querySelector('.si-btn');
-  btn.disabled = true; btn.textContent = 'Signing in…';
+  btn.disabled = true; btn.textContent = 'Redirecting to Microsoft…';
   try {
-    const res = await msalInstance.loginPopup({ scopes: SCOPES });
-    msalInstance.setActiveAccount(res.account);
-    await afterSignIn();
+    await msalInstance.loginRedirect({ scopes: SCOPES });
   } catch(e) {
     const el = document.getElementById('si-err');
     el.textContent = e.message || 'Sign-in failed. Please try again.';
@@ -922,7 +1022,7 @@ async function doSignIn(){
 }
 
 function doSignOut(){
-  msalInstance.logoutPopup();
+  msalInstance.logoutRedirect();
 }
 
 async function getToken(){
@@ -932,8 +1032,8 @@ async function getToken(){
     const res = await msalInstance.acquireTokenSilent({ scopes:SCOPES, account:acct });
     return res.accessToken;
   } catch(e) {
-    const res = await msalInstance.acquireTokenPopup({ scopes:SCOPES, account:acct });
-    return res.accessToken;
+    await msalInstance.loginRedirect({ scopes:SCOPES });
+    return null;
   }
 }
 
@@ -989,7 +1089,7 @@ async function getSiteId(){
 
 async function spList(listName, filter='', select=''){
   const sid = await getSiteId();
-  let url = `/sites/${sid}/lists/${listName}/items?$expand=fields&$top=5000`;
+  let url = `/sites/${sid}/lists/${listName}/items?$expand=fields&$select=id,fields&$top=5000`;
   if(filter) url += `&$filter=${encodeURIComponent(filter)}`;
   if(select) url += `&$select=${select}`;
   const items = [];
@@ -1067,13 +1167,22 @@ function canView(){ return canHR()||currentRole==='clusterMgr'||currentRole==='m
 // DATA LOADING
 // ════════════════════════════════════════════
 async function loadAllData(){
+  // Load clusters from SP (populates dropdowns)
+  try {
+    const cl = await spList(LISTS.clusters);
+    const spCl = cl.map(c=>c.Title||'').filter(Boolean).sort();
+    if(spCl.length){ clusters=spCl; localStorage.setItem('ph_clusters',JSON.stringify(clusters)); }
+  } catch(e){ console.warn('Clusters:',e.message); }
+
   try { appData.personnel = await spList(LISTS.personnel); } catch(e){ console.warn('PersonnelRegister:',e.message); }
+  try { appData.leave = await spList(LISTS.leave); } catch(e){ console.warn('LeaveRequests:',e.message); }
+
   if(canHR()||currentRole==='clusterMgr'){
-    try { appData.alerts = await spList(LISTS.alerts); } catch(e){ console.warn('PersonnelAlerts:',e.message); }
+    try { appData.alerts = await spList(LISTS.alerts); } catch(e){ console.warn('HRAlertsLog:',e.message); }
   }
   if(canHR()){
-    try { appData.ir = await spList(LISTS.ir); } catch(e){ console.warn('PersonnelIR:',e.message); }
-    try { appData.onboarding = await spList(LISTS.onboarding); } catch(e){ console.warn('PersonnelOnboarding:',e.message); }
+    try { appData.ir = await spList(LISTS.ir); } catch(e){ console.warn('IRCases:',e.message); }
+    try { appData.onboarding = await spList(LISTS.onboarding); } catch(e){ console.warn('OnboardingTracker:',e.message); }
   }
 }
 
@@ -1088,6 +1197,7 @@ function buildTabs(){
     { id:'sec-directory',  label:'👥 Directory',   roles:['superAdmin','hrAdmin','clusterMgr','management','employee'] },
     { id:'sec-register',   label:'📋 Register',    roles:['superAdmin','hrAdmin'] },
     { id:'sec-profile',    label:'👤 My Profile',  roles:['superAdmin','hrAdmin','clusterMgr','management','employee'] },
+    { id:'sec-leave',      label:'📅 Leave',       roles:['superAdmin','hrAdmin','clusterMgr','employee'] },
     { id:'sec-ir',         label:'⚖️ IR Cases',    roles:['superAdmin','hrAdmin'] },
     { id:'sec-onboarding', label:'🟡 Onboarding',  roles:['superAdmin','hrAdmin','clusterMgr'] },
     { id:'sec-bursary',    label:'🎓 Bursary',     roles:['superAdmin','hrAdmin'] },
@@ -1127,6 +1237,7 @@ function showTab(id){
     'sec-directory':  renderDirectory,
     'sec-register':   renderRegister,
     'sec-profile':    renderProfile,
+    'sec-leave':      renderLeave,
     'sec-ir':         renderIR,
     'sec-onboarding': renderOnboarding,
     'sec-bursary':    renderBursary,
@@ -1378,7 +1489,7 @@ function renderRegister(){
     if(sts==='Active' && p.Status==='Archived') return false;
     if(sts==='Archived' && p.Status!=='Archived') return false;
     return true;
-  }).sort((a,b)=>(a.EmployeeNo||'').localeCompare(b.EmployeeNo||'')));
+  }).sort((a,b)=>(a.EmployeeNo||'').localeCompare(b.EmployeeNo||''));
 
   document.getElementById('reg-prog').textContent = `${data.length} employee${data.length!==1?'s':''}`;
   const tbody = document.getElementById('reg-body');
@@ -1977,6 +2088,7 @@ function saveGroupConfig(){
 function exportXlsx(tab){
   const sources = {
     register:   { data: appData.personnel, name:'PersonnelRegister' },
+    leave:      { data: appData.leave,     name:'LeaveRequests' },
     alerts:     { data: appData.alerts,    name:'HRAlertsLog' },
     ir:         { data: appData.ir,        name:'IRCases' },
     onboarding: { data: appData.onboarding,name:'OnboardingTracker' }
@@ -2025,7 +2137,11 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   try {
     const res = await msalInstance.handleRedirectPromise();
     if(res){ msalInstance.setActiveAccount(res.account); await afterSignIn(); return; }
-  } catch(e){ console.warn('Redirect error:',e); }
+  } catch(e){
+    console.warn('Redirect error:',e);
+    try { msalInstance.clearCache(); } catch(_) {}
+    try { sessionStorage.clear(); } catch(_) {}
+  }
   // Check existing session
   const accounts = msalInstance.getAllAccounts();
   if(accounts.length){
@@ -2035,6 +2151,212 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   // Show sign-in
   document.getElementById('signin-screen').classList.remove('hidden');
 });
+
+// ════════════════════════════════════════════
+// LEAVE MANAGEMENT
+// ════════════════════════════════════════════
+function renderLeave(){
+  const isHR  = canHR();
+  const isMgr = currentRole==='clusterMgr';
+  const isEmp = currentRole==='employee';
+  const isAll = isHR || currentRole==='management';
+
+  let myLeave = appData.leave;
+  if(isEmp) myLeave = myLeave.filter(l=>(l.EmployeeEmail||'').toLowerCase()===currentUser.email.toLowerCase());
+  else if(isMgr&&userCluster) myLeave = myLeave.filter(l=>l.Cluster===userCluster);
+
+  const yr = String(new Date().getFullYear());
+  const annualUsed = myLeave
+    .filter(l=>l.LeaveType==='Annual Leave'&&l.Status==='Approved'&&(l.StartDate||'').startsWith(yr))
+    .reduce((s,l)=>s+(parseFloat(l.Days)||0),0);
+  const pendingCt  = myLeave.filter(l=>(l.Status||'').startsWith('Pending')).length;
+  const approvedCt = myLeave.filter(l=>l.Status==='Approved').length;
+
+  document.getElementById('leave-kpi').innerHTML=[
+    {l:'Pending', v:pendingCt, s:'awaiting approval', cls:pendingCt>0?'kpi-am':''},
+    {l:'Approved This Year', v:approvedCt, s:yr, cls:'kpi-gn'},
+    {l:'Annual Leave Used', v:annualUsed||0, s:'days of 15 entitlement', cls:annualUsed>=15?'kpi-rd':''},
+    {l:'Total Records', v:myLeave.length, s:'all time', cls:''}
+  ].map(k=>`<div class="kpi ${k.cls}"><div class="kpi-l">${k.l}</div><div class="kpi-v">${k.v}</div><div class="kpi-s">${k.s}</div></div>`).join('');
+
+  // Pending approvals panel
+  const wrap = document.getElementById('leave-approvals-wrap');
+  if(isHR||isMgr){
+    wrap.style.display='block';
+    let pending = appData.leave.filter(l=>(l.Status||'').startsWith('Pending'));
+    if(isMgr&&userCluster) pending=pending.filter(l=>l.Cluster===userCluster);
+    const cEl=document.getElementById('leave-pending-count');
+    if(cEl) cEl.textContent=pending.length?'('+pending.length+')':'';
+    const body=document.getElementById('leave-approvals-body');
+    body.innerHTML=pending.length?pending.map(l=>`
+      <div style="padding:10px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:12px;font-weight:700">${escHtml(l.EmployeeName||'—')}</div>
+          <div style="font-size:11px;color:var(--tx3)">${escHtml(l.LeaveType||'—')} · ${fmt(l.StartDate)}–${fmt(l.EndDate)} · ${l.Days||'?'} days · ${escHtml(l.Cluster||'—')}</div>
+          <span class="bd ${(l.Status||'').includes('1')?'ba':'bb'}">${escHtml(l.Status||'—')}</span>
+        </div>
+        <button class="btn btn-sec btn-sm" onclick="openLeaveApproval(${l._spId})">Review →</button>
+      </div>`).join('')
+    :'<div style="font-size:12px;color:var(--tx3)">No pending leave requests.</div>';
+  } else {
+    wrap.style.display='none';
+  }
+
+  // Filters
+  const statusF  = document.getElementById('lv-f-status')?.value||'';
+  const typeF    = document.getElementById('lv-f-type')?.value||'';
+  const clusterF = document.getElementById('lv-f-cluster')?.value||'';
+  populateSelect('lv-f-cluster', clusters);
+
+  let rows=[...myLeave];
+  if(statusF)  rows=rows.filter(l=>l.Status===statusF);
+  if(typeF)    rows=rows.filter(l=>l.LeaveType===typeF);
+  if(clusterF&&!isEmp) rows=rows.filter(l=>l.Cluster===clusterF);
+  rows.sort((a,b)=>(b.SubmittedDate||b.Created||'').localeCompare(a.SubmittedDate||a.Created||''));
+
+  const tbody=document.getElementById('leave-tbody');
+  const empty=document.getElementById('leave-empty');
+  if(!rows.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+
+  const stCls=s=>s==='Approved'?'bg':(s||'').startsWith('Pending')?'ba':s==='Declined'?'br':'bgy';
+
+  tbody.innerHTML=rows.map(l=>`<tr>
+    <td><div style="font-weight:600;font-size:12px">${escHtml(l.EmployeeName||'—')}</div><div style="font-size:11px;color:var(--tx3)">${escHtml(l.Cluster||'—')}</div></td>
+    <td style="font-size:12px">${escHtml(l.LeaveType||'—')}</td>
+    <td style="font-size:12px">${fmt(l.StartDate)}</td>
+    <td style="font-size:12px">${fmt(l.EndDate)}</td>
+    <td style="text-align:center;font-weight:700;font-size:12px">${l.Days||'—'}</td>
+    <td><span class="bd ${stCls(l.Status)}">${escHtml(l.Status||'—')}</span></td>
+    <td style="font-size:11px;color:var(--tx3)">${fmt(l.SubmittedDate||l.Created)}</td>
+    <td style="white-space:nowrap">
+      ${(isHR||isMgr)&&(l.Status||'').startsWith('Pending')?`<button class="btn btn-sec btn-sm" onclick="openLeaveApproval(${l._spId})">Review</button>`:''}
+      ${isEmp&&l.Status==='Pending Stage 1'?`<button class="btn btn-sm btn-rd" onclick="cancelLeave(${l._spId})">Cancel</button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+function openLeaveForm(){
+  document.getElementById('leave-modal-title').textContent='Submit Leave Request';
+  document.getElementById('lv-sp-id').value='';
+  ['lv-type','lv-start','lv-end','lv-reason','lv-docsurl'].forEach(id=>{
+    const el=document.getElementById(id);if(el) el.value='';
+  });
+  document.getElementById('lv-days').value='';
+  openM('m-leave');
+}
+
+function calcLeaveDays(){
+  const s=document.getElementById('lv-start').value, e=document.getElementById('lv-end').value;
+  if(!s||!e) return;
+  const d1=new Date(s), d2=new Date(e);
+  if(d2<d1){document.getElementById('lv-days').value='';return;}
+  let days=0, cur=new Date(d1);
+  while(cur<=d2){const dw=cur.getDay();if(dw>0&&dw<6)days++;cur.setDate(cur.getDate()+1);}
+  document.getElementById('lv-days').value=days;
+}
+
+async function saveLeave(){
+  const spId =document.getElementById('lv-sp-id').value;
+  const g    =id=>document.getElementById(id)?.value||'';
+  const lvType=g('lv-type'), start=g('lv-start'), end=g('lv-end');
+  if(!lvType){toast('Select a leave type.','error');return;}
+  if(!start||!end){toast('Enter start and end dates.','error');return;}
+  if(new Date(end)<new Date(start)){toast('End date must be on or after start date.','error');return;}
+
+  const myRec=appData.personnel.find(p=>(p.WorkEmail||p.Email||'').toLowerCase()===currentUser.email.toLowerCase());
+  const empName=myRec?`${myRec.FirstName||myRec.First_x0020_Name||''} ${myRec.LastName||myRec.Last_x0020_Name||''}`.trim()||currentUser.name:currentUser.name;
+  const empNo  =myRec?.Title||myRec?.EmployeeNo||'';
+  const cluster=myRec?.Cluster||'';
+
+  const fields={
+    Title:          `${empNo||currentUser.email}-${start}`.slice(0,255),
+    EmployeeName:   empName,
+    EmployeeEmail:  currentUser.email,
+    EmployeeNo:     empNo,
+    Cluster:        cluster,
+    LeaveType:      lvType,
+    StartDate:      start,
+    EndDate:        end,
+    Days:           g('lv-days')||'0',
+    Reason:         g('lv-reason'),
+    SupportingDocsUrl: g('lv-docsurl'),
+    Status:         'Pending Stage 1',
+    SubmittedDate:  new Date().toISOString().split('T')[0]
+  };
+
+  showLoad('Submitting leave request…');
+  try{
+    if(spId){await spPatch(LISTS.leave,spId,fields);toast('Leave request updated.','success');}
+    else{await spPost(LISTS.leave,fields);toast('Leave submitted. Your Cluster Manager will be notified.','success');}
+    closeM('m-leave');
+    appData.leave=await spList(LISTS.leave);
+    renderLeave();
+  }catch(e){toast('Error: '+e.message,'error');}
+  hideLoad();
+}
+
+function openLeaveApproval(spId){
+  const l=appData.leave.find(x=>x._spId==spId);
+  if(!l) return;
+  document.getElementById('lva-sp-id').value=spId;
+  document.getElementById('lva-notes').value='';
+  document.getElementById('lva-details').innerHTML=`
+    <div><strong>Employee:</strong> ${escHtml(l.EmployeeName||'—')}${l.EmployeeNo?' ('+escHtml(l.EmployeeNo)+')':''}</div>
+    <div><strong>Cluster:</strong> ${escHtml(l.Cluster||'—')}</div>
+    <div><strong>Leave Type:</strong> ${escHtml(l.LeaveType||'—')}</div>
+    <div><strong>Dates:</strong> ${fmt(l.StartDate)}–${fmt(l.EndDate)} (${l.Days||'?'} working days)</div>
+    <div><strong>Reason:</strong> ${escHtml(l.Reason||'—')}</div>
+    ${l.SupportingDocsUrl?`<div><strong>Document:</strong> <a href="${escHtml(l.SupportingDocsUrl)}" target="_blank" style="color:var(--st)">View document</a></div>`:''}
+    <div><strong>Status:</strong> <span class="bd ba">${escHtml(l.Status||'—')}</span></div>
+  `;
+  openM('m-leave-approve');
+}
+
+async function decideLeave(decision){
+  const spId=document.getElementById('lva-sp-id').value;
+  const notes=document.getElementById('lva-notes').value.trim();
+  if(!spId) return;
+  const l=appData.leave.find(x=>x._spId==spId);
+  if(!l) return;
+
+  // Stage 1 approval moves to Stage 2; Stage 2 approval = fully Approved
+  let newStatus=decision;
+  if(decision==='Approved'&&l.Status==='Pending Stage 1') newStatus='Pending Stage 2';
+
+  const fields={Status:newStatus};
+  if(notes) fields.ApprovalNotes=notes;
+  if(l.Status==='Pending Stage 1'){
+    fields.Stage1ApprovedBy=currentUser.name;
+    fields.Stage1Date=new Date().toISOString().split('T')[0];
+  }else{
+    fields.Stage2ApprovedBy=currentUser.name;
+    fields.Stage2Date=new Date().toISOString().split('T')[0];
+  }
+
+  showLoad('Saving decision…');
+  try{
+    await spPatch(LISTS.leave,spId,fields);
+    toast(`Leave ${decision.toLowerCase()}.`,decision==='Approved'?'success':'warning');
+    closeM('m-leave-approve');
+    appData.leave=await spList(LISTS.leave);
+    renderLeave();
+  }catch(e){toast('Error: '+e.message,'error');}
+  hideLoad();
+}
+
+async function cancelLeave(spId){
+  if(!confirm('Cancel this leave request?')) return;
+  showLoad('Cancelling…');
+  try{
+    await spPatch(LISTS.leave,spId,{Status:'Cancelled'});
+    toast('Leave request cancelled.','success');
+    appData.leave=await spList(LISTS.leave);
+    renderLeave();
+  }catch(e){toast('Error: '+e.message,'error');}
+  hideLoad();
+}
+
 
 </script>
 </body>
