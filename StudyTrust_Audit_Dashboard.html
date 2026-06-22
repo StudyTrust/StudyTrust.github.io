@@ -1411,6 +1411,7 @@ function renderTab(tab, filterFn){
   const items=filterFn?getItems(tab).filter(filterFn):getItems(tab);
   const body=document.getElementById('body-'+tab);
   if(!body)return;
+  populateFilterDropdowns(tab, getItems(tab)); // v4.7.1: status/person filter dropdowns were never populated — fixed
   if(tab==='planning'||tab==='execution') renderPlanExec(tab,items,body);
   else if(tab==='recommendations') renderRec(items,body);
   else if(tab==='sampling') renderSampling(items,body);
