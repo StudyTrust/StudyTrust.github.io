@@ -4264,6 +4264,10 @@ async function provisionGovTraining() {
     const sopResp = await gFetch(`/sites/${siteId}/lists?$filter=displayName eq 'GovSOPs'`);
     const sopListId = sopResp.value[0].id;
     await gFetch(`/sites/${siteId}/lists/${sopListId}/columns`, {method:'POST',body:JSON.stringify({name:'SOBCompliant',choice:{displayAs:'dropDownMenu',choices:['Yes','No','Pending']}})});
-  
+    addLog('GovTraining provisioning complete.', true);
+    if (btn) { btn.disabled = false; btn.textContent = 'Provision Training List'; }
+  } catch(e) {
+    addLog('Provisioning failed: ' + (e.message || e), false);
+    if (btn) { btn.disabled = false; btn.textContent = 'Provision Training List'; }
   }
 }
