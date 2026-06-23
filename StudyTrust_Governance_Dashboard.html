@@ -4265,3 +4265,5 @@ async function provisionGovTraining() {
     const sopListId = sopResp.value[0].id;
     await gFetch(`/sites/${siteId}/lists/${sopListId}/columns`, {method:'POST',body:JSON.stringify({name:'SOBCompliant',choice:{displayAs:'dropDownMenu',choices:['Yes','No','Pending']}})});
   
+  }
+}
