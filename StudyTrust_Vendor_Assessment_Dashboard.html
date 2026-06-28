@@ -291,6 +291,7 @@
         .signin-note{font-size:11px;color:rgba(255,255,255,.6);margin-top:16px;text-align:center}
         .signin-error{background:#FCEBEB;border:1px solid #E57373;border-radius:8px;padding:10px 14px;font-size:12px;color:#7B1C1C;margin-top:14px;display:none;text-align:left;line-height:1.5}
         .signin-error.show{display:block}
+        .hidden{display:none}
 
         .footer {
             text-align: center;
@@ -367,7 +368,7 @@
                         <option value="">All</option>
                         <option value="Active">Active</option>
                         <option value="Approved">Approved</option>
-                        <option value="Pending">In Assessment</option>
+                        <option value="In Assessment">In Assessment</option>
                     </select>
                 </div>
                 <button onclick="loadListData()">Refresh</button>
@@ -449,8 +450,8 @@
                 </div>
 
                 <div id="upcoming-renewals" class="tab-content">
-                    <div class="loading" id="loading-renewals">Loading...</div>
-                    <table id="table-renewals" style="display:none;">
+                    <div class="loading" id="loading-upcoming">Loading...</div>
+                    <table id="table-upcoming" style="display:none;">
                         <thead>
                             <tr>
                                 <th>Tool Name</th>
@@ -461,7 +462,7 @@
                                 <th>Days Until Renewal</th>
                             </tr>
                         </thead>
-                        <tbody id="tbody-renewals"></tbody>
+                        <tbody id="tbody-upcoming"></tbody>
                     </table>
                 </div>
             </div>
@@ -489,6 +490,10 @@
         let msalApp, graphToken, currentAccount;
         let currentListName = "ai";
         let allData = [];
+
+        const SP_HOST = 'studietrust.sharepoint.com';
+        const SP_PATH = '/sites/StudyTrustAuditTracker';
+        let siteId = null;
 
         // ── MSAL INIT ───────────────────────────────────────────────────────
         async function initMsal() {
@@ -547,45 +552,80 @@
           await msalApp.logoutRedirect({ postLogoutRedirectUri: window.location.href });
         }
 
-        async function loadListData() {
-            const listName = document.getElementById("list-select").value;
-            currentListName = listName;
-
+        // ── GRAPH API HELPERS ─────────────────────────────────────────────────
+        async function gFetch(url, opts) {
+            opts = opts || {};
+            const accounts = msalApp.getAllAccounts();
+            if (accounts.length === 0) throw new Error('Not signed in');
+            let token;
             try {
-                // Get access token
-                const tokenResponse = await msalApp.acquireTokenSilent({
-                    scopes: GRAPH_SCOPES,
-                    account: currentAccount
-                });
+                const r = await msalApp.acquireTokenSilent({ scopes: GRAPH_SCOPES, account: accounts[0] });
+                token = r.accessToken;
+                graphToken = token;
+            } catch(e) {
+                throw new Error('Could not get access token: ' + e.message);
+            }
+            const headers = Object.assign(
+                { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                opts.headers || {}
+            );
+            const resp = await fetch(url, Object.assign({}, opts, { headers: headers }));
+            if (!resp.ok) {
+                const text = await resp.text().catch(function() { return resp.statusText; });
+                throw new Error('Graph API error ' + resp.status + ': ' + text);
+            }
+            return resp.json();
+        }
 
-                // Fetch data from SharePoint REST API
-                const listMap = {
-                    "ai": "AI_Tools",
-                    "software": "Software_Tools",
-                    "applications": "Applications"
-                };
+        async function getSiteId() {
+            if (siteId) return siteId;
+            const data = await gFetch('https://graph.microsoft.com/v1.0/sites/' + SP_HOST + ':' + SP_PATH);
+            siteId = data.id;
+            return siteId;
+        }
 
-                const listUrl = `https://studietrust.sharepoint.com/sites/StudyTrustAuditTracker/_api/web/lists/getbyTitle('${listMap[listName]}')/items`;
+        async function spGet(listTitle) {
+            const sid = await getSiteId();
+            let url = 'https://graph.microsoft.com/v1.0/sites/' + sid
+                + '/lists/' + encodeURIComponent(listTitle)
+                + '/items?$expand=fields&$select=id,fields&$top=999';
+            let items = [];
+            while (url) {
+                const data = await gFetch(url);
+                items = items.concat(data.value || []);
+                url = data['@odata.nextLink'] || null;
+            }
+            return items;
+        }
 
-                const response = await fetch(listUrl, {
-                    headers: {
-                        "Authorization": `Bearer ${tokenResponse.accessToken}`,
-                        "Accept": "application/json"
-                    }
-                });
+        function resetToLoading() {
+            ['all', 'active', 'pending', 'upcoming'].forEach(function(suffix) {
+                const loading = document.getElementById('loading-' + suffix);
+                const table   = document.getElementById('table-'   + suffix);
+                if (loading) { loading.style.display = ''; loading.textContent = 'Loading…'; }
+                if (table)   table.style.display = 'none';
+            });
+        }
 
-                if (response.ok) {
-                    const data = await response.json();
-                    allData = data.value || [];
-                    filterData();
-                    updateStats();
-                    document.getElementById("last-updated").textContent = new Date().toLocaleString();
-                } else {
-                    showError(`Failed to load data: ${response.statusText}`);
-                }
+        // ── LOAD LIST DATA (Graph API) ─────────────────────────────────────
+        async function loadListData() {
+            const listMap = {
+                "ai":           "AI_Tools",
+                "software":     "Software_Tools",
+                "applications": "Applications"
+            };
+            const listKey = document.getElementById("list-select").value;
+            currentListName = listKey;
+            resetToLoading();
+            try {
+                const items = await spGet(listMap[listKey]);
+                allData = items.map(function(item) { return item.fields || {}; });
+                filterData();
+                updateStats();
+                document.getElementById("last-updated").textContent = new Date().toLocaleString();
             } catch (error) {
                 console.error("Data load error:", error);
-                showError(`Error loading data: ${error.message}`);
+                showError('Error loading data: ' + error.message);
             }
         }
 
