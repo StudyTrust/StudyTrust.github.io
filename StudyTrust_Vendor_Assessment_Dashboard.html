@@ -290,26 +290,66 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
-            background: linear-gradient(135deg, #1e5a96 0%, #2a7bad 100%);
+            background: linear-gradient(135deg, #003d66 0%, #1e5a96 100%);
             color: white;
         }
 
         .auth-box {
-            background: rgba(255,255,255,0.1);
-            padding: 40px;
-            border-radius: 8px;
+            background: white;
+            padding: 50px 60px;
+            border-radius: 12px;
             text-align: center;
-            backdrop-filter: blur(10px);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 400px;
+            color: #333;
+        }
+
+        .auth-logo {
+            width: 60px;
+            height: 60px;
+            background: #003d66;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
         }
 
         .auth-box h2 {
-            margin-bottom: 20px;
-            font-size: 24px;
+            margin-bottom: 10px;
+            font-size: 28px;
+            font-weight: 600;
+            color: #003d66;
+        }
+
+        .auth-box .subtitle {
+            margin-bottom: 30px;
+            font-size: 13px;
+            color: #666;
         }
 
         .auth-box p {
-            margin-bottom: 20px;
-            opacity: 0.9;
+            margin-bottom: 25px;
+            opacity: 0.85;
+            font-size: 14px;
+            color: #555;
+        }
+
+        .auth-box button {
+            background: #003d66;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.3s ease;
+        }
+
+        .auth-box button:hover {
+            background: #002847;
         }
 
         .hidden {
@@ -344,9 +384,23 @@
 <body>
     <div id="auth-ui" class="auth-container">
         <div class="auth-box">
-            <h2>StudyTrust Vendor Assessment</h2>
-            <p>Sign in with your StudyTrust account to view the dashboard</p>
-            <button onclick="signIn()">Sign In</button>
+            <div class="auth-logo">
+                <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#e8f0f7;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M50 8 L75 20 L75 45 C75 70 50 85 50 85 C50 85 25 70 25 45 L25 20 Z" fill="url(#shieldGradient)" stroke="#ffffff" stroke-width="2"/>
+                    <circle cx="50" cy="45" r="15" fill="#003d66" opacity="0.9"/>
+                    <path d="M45 40 L48 45 L55 38" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <h2>StudyTrust</h2>
+            <p class="subtitle">Vendor Assessment Dashboard</p>
+            <p>Sign in with your StudyTrust account to view vendor assessments and approvals</p>
+            <button onclick="signIn()">Sign In with Microsoft</button>
         </div>
     </div>
 
