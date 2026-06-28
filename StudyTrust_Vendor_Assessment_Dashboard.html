@@ -147,6 +147,36 @@ header p{font-size:10px;opacity:.6}
 /* ── FOOTER ── */
 .dash-footer{text-align:center;padding:20px;color:var(--tx3);font-size:11px;margin-top:20px;border-top:1px solid var(--bdr)}
 
+
+/* ── NATDIR ROLE ── */
+.rb-natdir{background:#a855f7;color:#fff}
+.ban-natdir{background:#f3e8ff;color:#581c87;border-bottom:1px solid #d8b4fe}
+
+/* ── FILE UPLOAD ── */
+.upload-row{display:flex;gap:6px;align-items:center}
+.upload-row input[type=url]{flex:1}
+.upload-status{font-size:10px;margin-top:2px}
+.upload-status.ok{color:var(--gn-tx)}.upload-status.err{color:var(--rd-tx)}.upload-status.busy{color:var(--am-tx)}
+
+/* ── PRIORITY ACTIONS ── */
+.action-item{display:flex;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--bdr);font-size:12px}
+.action-item:last-child{border-bottom:none}
+.action-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.dot-rd{background:#c0392b}.dot-am{background:#e67e22}.dot-bl{background:#226397}
+
+/* ── PRINT ── */
+@media print {
+  header,.tabs,.role-banner,#diag-panel,.toolbar,.btn,.adm,nav,
+  #role-banner,.modal-ov,.dash-footer{display:none!important}
+  .sec{display:block!important}
+  .card{border:1px solid #ccc;box-shadow:none;page-break-inside:avoid}
+  body{background:#fff;font-size:11pt}
+  .dt th,.dt td{padding:5px 8px}
+  .bd{border:1px solid #ccc;background:none!important;color:#000!important}
+  #print-only{display:block!important}
+}
+#print-only{display:none}
+
 </style>
 </head>
 <body>
@@ -184,6 +214,7 @@ header p{font-size:10px;opacity:.6}
     <div class="header-right">
       <span class="role-badge" id="role-badge" onclick="toggleDiag()" title="Click to show group diagnostic" style="cursor:pointer">Loading&hellip;</span>
       <span id="user-name" style="font-size:12px;color:rgba(255,255,255,.75)">User</span>
+      <button class="btn-header" onclick="printReport()" title="Print compliance report">&#128438; Print Report</button>
       <button class="btn-header" onclick="signOut()">Sign Out</button>
     </div>
   </header>
@@ -197,8 +228,11 @@ header p{font-size:10px;opacity:.6}
       </div>
       <div style="flex:1;min-width:260px">
         <div style="color:#ffd700;font-weight:700;margin-bottom:6px">&#9881; Admin Group Configuration</div>
-        <div style="color:#aaa;margin-bottom:6px">Current check: <span id="diag-current-grp" style="color:#ffd700"></span></div>
-        <input type="text" id="cfg-admin-grp" placeholder="Azure AD group display name"
+        <div style="color:#aaa;margin-bottom:6px">Admin group: <span id="diag-current-grp" style="color:#ffd700"></span></div>
+        <input type="text" id="cfg-admin-grp" placeholder="Admin group display name"
+          style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;font-size:12px;margin-bottom:4px">
+        <div style="color:#aaa;margin-bottom:4px;font-size:11px">National Director group: <span id="diag-current-natdir" style="color:#a855f7"></span></div>
+        <input type="text" id="cfg-natdir-grp" placeholder="National Director group display name"
           style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;font-size:12px;margin-bottom:6px">
         <div style="display:flex;gap:6px">
           <button onclick="saveGroupConfig()" style="background:#226397;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Save &amp; Reload</button>
@@ -231,6 +265,10 @@ header p{font-size:10px;opacity:.6}
           <div class="card-hd">Register Summary</div>
           <div style="padding:14px" id="register-summary"><p style="color:var(--tx3);text-align:center;padding:20px">Loading&hellip;</p></div>
         </div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-hd">Priority Actions <span style="font-size:11px;color:var(--tx3)">Items requiring attention — sorted by urgency</span></div>
+        <div id="priority-actions"><p style="padding:20px;text-align:center;color:var(--tx3)">Loading&hellip;</p></div>
       </div>
     </section>
 
@@ -413,8 +451,22 @@ header p{font-size:10px;opacity:.6}
       </div>
       <div class="f-grid">
         <div class="f-row"><label>Approval Date</label><input type="date" id="f-approvaldate"></div>
-        <div class="f-row"><label>Assessment Report URL</label><input type="url" id="f-assessmentreport" placeholder="https://…"></div>
-        <div class="f-row"><label>Approval Memo URL</label><input type="url" id="f-approvalmemo" placeholder="https://…"></div>
+        <div class="f-row"><label>Assessment Report</label>
+          <div class="upload-row">
+            <input type="url" id="f-assessmentreport" placeholder="Paste URL or upload from laptop">
+            <input type="file" id="f-assessmentreport-file" style="display:none" accept=".pdf,.docx,.xlsx,.pptx,.doc,.xls" onchange="handleFileUpload('f-assessmentreport','f-assessmentreport-file')">
+            <button type="button" class="btn btn-sec btn-sm" onclick="document.getElementById('f-assessmentreport-file').click()">&#128196; Upload</button>
+          </div>
+          <div class="upload-status" id="f-assessmentreport-st"></div>
+        </div>
+        <div class="f-row"><label>Approval Memo</label>
+          <div class="upload-row">
+            <input type="url" id="f-approvalmemo" placeholder="Paste URL or upload from laptop">
+            <input type="file" id="f-approvalmemo-file" style="display:none" accept=".pdf,.docx,.xlsx,.pptx,.doc,.xls" onchange="handleFileUpload('f-approvalmemo','f-approvalmemo-file')">
+            <button type="button" class="btn btn-sec btn-sm" onclick="document.getElementById('f-approvalmemo-file').click()">&#128196; Upload</button>
+          </div>
+          <div class="upload-status" id="f-approvalmemo-st"></div>
+        </div>
       </div>
       <div class="f-row"><label>Approval Summary (non-technical, max 300 chars)</label><textarea id="f-approvalsummary" placeholder="Brief summary for all-personnel view"></textarea></div>
     </div>
@@ -448,7 +500,14 @@ header p{font-size:10px;opacity:.6}
       <div class="modal-sec-hd">E &mdash; Compliance &amp; Documents</div>
       <div class="f-grid">
         <div class="f-row"><label>DPA Signed Date</label><input type="date" id="f-dpadate"></div>
-        <div class="f-row"><label>DPA Upload URL</label><input type="url" id="f-dpaupload" placeholder="https://…"></div>
+        <div class="f-row"><label>DPA Upload</label>
+          <div class="upload-row">
+            <input type="url" id="f-dpaupload" placeholder="Paste URL or upload from laptop">
+            <input type="file" id="f-dpaupload-file" style="display:none" accept=".pdf,.docx,.xlsx,.pptx,.doc,.xls" onchange="handleFileUpload('f-dpaupload','f-dpaupload-file')">
+            <button type="button" class="btn btn-sec btn-sm" onclick="document.getElementById('f-dpaupload-file').click()">&#128196; Upload</button>
+          </div>
+          <div class="upload-status" id="f-dpaupload-st"></div>
+        </div>
         <div class="f-row"><label>Last Compliance Review</label><input type="date" id="f-lastcompliance"></div>
         <div class="f-row"><label>Next Compliance Review Due</label><input type="date" id="f-nextcompliance"></div>
         <div class="f-row"><label>Vendor Primary Contact</label><input type="text" id="f-vendorcontact" placeholder="Name / email"></div>
@@ -496,7 +555,8 @@ header p{font-size:10px;opacity:.6}
         <select id="status-new" style="width:100%;padding:8px;border:1px solid var(--bdr);border-radius:6px;font-size:13px"></select>
       </div>
     </div>
-    <div class="f-row"><label>Reason / Note (optional)</label><textarea id="status-note" placeholder="Reason for status change" style="min-height:50px"></textarea></div>
+    <div class="f-row"><label>Decision Rationale / Notes</label><textarea id="status-note" placeholder="Required for Approved, Rejected decisions. Saved to Approval Summary field." style="min-height:60px"></textarea></div>
+    <div style="font-size:11px;color:var(--tx3);margin-top:-6px">Approving → sets Approval Date to today. Rejecting → sets Approval Status to REJECT. Rationale is saved to the Approval Summary field.</div>
   </div>
   <div class="modal-actions">
     <button class="btn btn-sec" onclick="closeM('m-status')">Cancel</button>
@@ -523,21 +583,26 @@ var MSAL_CFG     = {
 
 var LISTS      = {ai:'AI_Tools', sw:'Software_Tools', app:'Applications'};
 var LIST_LABELS= {ai:'AI Tools', sw:'Software Tools', app:'Applications'};
-var ADMIN_GROUP = 'Dashboards - Governance-Admins'; // overridden by loadGroupConfig()
+var ADMIN_GROUP  = 'Dashboards - Governance-Admins'; // overridden by loadGroupConfig()
+var NATDIR_GROUP = 'Leadership_Group';              // National Director — read + approve only
 var _diagGroups = [];
 
 function loadGroupConfig() {
   var cfg = {};
   try { cfg = JSON.parse(localStorage.getItem('st_vend_group_cfg') || '{}'); } catch(e) {}
-  ADMIN_GROUP = cfg.admin || 'Dashboards - Governance-Admins';
+  ADMIN_GROUP  = cfg.admin  || 'Dashboards - Governance-Admins';
+  NATDIR_GROUP = cfg.natdir || 'Leadership_Group';
   var inp = document.getElementById('cfg-admin-grp');
   if (inp) inp.value = ADMIN_GROUP;
+  var inp2 = document.getElementById('cfg-natdir-grp');
+  if (inp2) inp2.value = NATDIR_GROUP;
 }
 function saveGroupConfig() {
   var ag = (document.getElementById('cfg-admin-grp')||{}).value || ADMIN_GROUP;
   ag = ag.trim();
-  localStorage.setItem('st_vend_group_cfg', JSON.stringify({admin:ag}));
-  ADMIN_GROUP = ag;
+  var ndg = ((document.getElementById('cfg-natdir-grp')||{}).value || NATDIR_GROUP).trim();
+  localStorage.setItem('st_vend_group_cfg', JSON.stringify({admin:ag, natdir:ndg}));
+  ADMIN_GROUP = ag; NATDIR_GROUP = ndg;
   toast('Group config saved. Reloading…', 'success');
   setTimeout(function(){ window.location.reload(); }, 1200);
 }
@@ -562,7 +627,7 @@ var RISK_OPTS   = ['Clear','Low Risk','Medium Risk','High Risk','Critical Gap'];
 var USER_FIELDS = {BusinessOwner:1, ToolChampionOwner:1};
 
 // ── STATE ─────────────────────────────────────────────────────────────────
-var msalApp, graphToken, graphSiteId;
+var msalApp, graphToken, graphSiteId, graphDriveId;
 var currentRole = 'personnel';
 var currentUser = 'User';
 var allData     = {ai:[], sw:[], app:[]};
@@ -673,7 +738,8 @@ async function detectRole() {
     var d = await gFetch('/me/memberOf?$select=displayName&$top=200');
     _diagGroups = (d.value || []).map(function(g){return g.displayName||'';}).filter(Boolean);
     var lower = _diagGroups.map(function(g){return g.toLowerCase();});
-    if (lower.indexOf(ADMIN_GROUP.toLowerCase()) !== -1) return 'admin';
+    if (lower.indexOf(ADMIN_GROUP.toLowerCase())  !== -1) return 'admin';
+    if (lower.indexOf(NATDIR_GROUP.toLowerCase()) !== -1) return 'natdir';
   } catch(e) { console.warn('Role detection failed:', e.message); }
   return 'personnel';
 }
@@ -734,6 +800,11 @@ function applyRole() {
     badge.className    = 'role-badge rb-admin';
     banner.textContent = 'Admin Mode — Full access. All changes save live to SharePoint.';
     banner.className   = 'role-banner ban-admin';
+  } else if (currentRole === 'natdir') {
+    badge.textContent  = 'National Director';
+    badge.className    = 'role-badge rb-natdir';
+    banner.textContent = 'National Director View — Full register visibility. Use Pending Approval tab to approve or reject assessed tools.';
+    banner.className   = 'role-banner ban-natdir';
   } else {
     badge.textContent  = 'All Personnel';
     badge.className    = 'role-badge rb-personnel';
@@ -761,7 +832,7 @@ var TABS_PERSONNEL = [
 ];
 
 function buildTabs() {
-  var tabs = currentRole === 'admin' ? TABS_ADMIN : TABS_PERSONNEL;
+  var tabs = (currentRole === 'admin' || currentRole === 'natdir') ? TABS_ADMIN : TABS_PERSONNEL;
   document.getElementById('tab-bar').innerHTML = tabs.map(function(t,i){
     return '<button class="tab'+(i===0?' on':'')+'" onclick="showTab(\''+t.id+'\',this)">'+t.l+'</button>';
   }).join('');
@@ -779,7 +850,7 @@ function showTab(id, btn) {
 
 // ── RENDER ALL ────────────────────────────────────────────────────────────
 function renderAll() {
-  if (currentRole === 'admin') {
+  if (currentRole === 'admin' || currentRole === 'natdir') {
     renderOverview();
     renderListTab('ai'); renderListTab('sw'); renderListTab('app');
     renderPending(); renderRenewals(); renderCompliance();
@@ -834,6 +905,62 @@ function renderOverview() {
   });
   sHtml += '</tbody></table>';
   document.getElementById('register-summary').innerHTML = sHtml;
+
+  // Cost totals
+  var totalCost = allItems().reduce(function(s,i){ return s+(Number(i.TotalAnnualCost)||0); }, 0);
+  var activeCost= allItems().filter(function(i){return i.Status==='Active';}).reduce(function(s,i){ return s+(Number(i.TotalAnnualCost)||0); }, 0);
+  var costHtml = '<table class="dt"><thead><tr><th>Register</th><th>Annual Cost (ZAR)</th></tr></thead><tbody>';
+  ['ai','sw','app'].forEach(function(lk){
+    var cost = allData[lk].reduce(function(s,i){ return s+(Number(i.TotalAnnualCost)||0); }, 0);
+    costHtml += '<tr><td>'+LIST_LABELS[lk]+'</td><td>'+(cost?'R '+cost.toLocaleString('en-ZA'):'Not recorded')+'</td></tr>';
+  });
+  costHtml += '<tr style="font-weight:700;border-top:2px solid var(--bdr)"><td>Total (all registers)</td><td>R '+totalCost.toLocaleString('en-ZA')+'</td></tr>';
+  costHtml += '<tr style="color:var(--gn-tx)"><td>Active tools only</td><td>R '+activeCost.toLocaleString('en-ZA')+'</td></tr>';
+  costHtml += '</tbody></table>';
+  document.getElementById('register-summary').innerHTML = sHtml + '<div style="margin-top:14px"><div style="font-size:11px;font-weight:700;color:var(--tx3);margin-bottom:6px;text-transform:uppercase">Annual Cost Summary</div>' + costHtml + '</div>';
+
+  // Priority actions
+  var actions = [];
+  var now2 = new Date();
+  allItems().forEach(function(item) {
+    // Overdue compliance
+    if (item.NextComplianceReviewDue && new Date(item.NextComplianceReviewDue) < now2 && item.Status==='Active') {
+      var days = Math.floor((now2 - new Date(item.NextComplianceReviewDue))/86400000);
+      actions.push({label:'Compliance review OVERDUE by '+days+' days', name:item.ToolName, list:LIST_LABELS[item._list], urgency:0, id:item._id, lk:item._list, dot:'rd'});
+    }
+    // Renewal <14 days
+    if (item.LicenceRenewalDate) {
+      var rd = new Date(item.LicenceRenewalDate);
+      var dd = Math.floor((rd-now2)/86400000);
+      if (dd>=0 && dd<=14) actions.push({label:'Licence renewal in '+dd+' days', name:item.ToolName, list:LIST_LABELS[item._list], urgency:1, id:item._id, lk:item._list, dot:'rd'});
+      else if (dd>14 && dd<=30) actions.push({label:'Licence renewal in '+dd+' days', name:item.ToolName, list:LIST_LABELS[item._list], urgency:2, id:item._id, lk:item._list, dot:'am'});
+    }
+    // Assessed > 7 days
+    if (item.Status==='Assessed' && item.AssessmentCompleteDate) {
+      var w = Math.floor((now2-new Date(item.AssessmentCompleteDate))/86400000);
+      if (w>=7) actions.push({label:'Awaiting approval decision ('+w+' days since assessment)', name:item.ToolName, list:LIST_LABELS[item._list], urgency:3, id:item._id, lk:item._list, dot:'bl'});
+    }
+    // High risk active
+    if (['High Risk','Critical Gap'].indexOf(item.RiskTier)!==-1 && item.Status==='Active' && !item.ResidualRiskSignoff) {
+      actions.push({label:'High-risk tool active without residual risk sign-off', name:item.ToolName, list:LIST_LABELS[item._list], urgency:4, id:item._id, lk:item._list, dot:'rd'});
+    }
+  });
+  actions.sort(function(a,b){return a.urgency-b.urgency;});
+  var paEl = document.getElementById('priority-actions');
+  if (paEl) {
+    if (!actions.length) {
+      paEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3)">&#10003; No priority actions — all items are in order.</div>';
+    } else {
+      paEl.innerHTML = actions.slice(0,12).map(function(a){
+        return '<div class="action-item">'
+          +'<div class="action-dot dot-'+a.dot+'"></div>'
+          +'<div style="flex:1"><strong>'+esc(a.name)+'</strong> <span style="color:var(--tx3);font-size:11px">('+a.list+')</span>'
+          +'<div style="color:var(--tx2)">'+a.label+'</div></div>'
+          +(currentRole==='admin'?'<button class="btn btn-sm btn-sec" onclick="openEditModal(\''+esc(a.id)+'\'\',\''+a.lk+'\'\'">Edit</button>':'')
+          +'</div>';
+      }).join('');
+    }
+  }
 }
 
 // ── LIST TABS ─────────────────────────────────────────────────────────────
@@ -987,6 +1114,18 @@ function renderCompliance() {
   }).join('');
 }
 
+// ── REGISTER ID GENERATOR ────────────────────────────────────────────────
+function generateRegisterID(lk) {
+  var pfx  = {ai:'ST-AI', sw:'ST-SW', app:'ST-APP'}[lk] || 'ST-XX';
+  var year = new Date().getFullYear();
+  var nums = allData[lk].map(function(i){
+    var m = (i.RegisterID||'').match(/(\d+)$/);
+    return m ? parseInt(m[1], 10) : 0;
+  });
+  var next = nums.length ? Math.max.apply(null, nums) + 1 : 1;
+  return pfx + '-' + year + '-' + String(next).padStart(3, '0');
+}
+
 // ── ADD / EDIT MODAL ──────────────────────────────────────────────────────
 function openAddModal(lk) {
   editCtx = {item:null, lk:lk, isNew:true};
@@ -995,6 +1134,7 @@ function openAddModal(lk) {
   clearItemForm();
   document.getElementById('f-category').value = {ai:'AI Tool',sw:'Software',app:'Application'}[lk] || 'AI Tool';
   document.getElementById('f-status').value = 'Received';
+  document.getElementById('f-registerid').value = generateRegisterID(lk);
   openM('m-item');
 }
 
@@ -1134,7 +1274,18 @@ async function applyStatus() {
   var btn = document.getElementById('apply-status-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await spPatch(LISTS[statusCtx.lk], statusCtx.item._id, {Status:newStatus});
+    var note = (document.getElementById('status-note')||{}).value || '';
+    var patchFields = {Status:newStatus};
+    var approvalDecisions = ['APPROVE','CONDITIONAL APPROVAL','REJECT'];
+    var approvalStatuses  = ['Approved','Approved (Conditional)','Rejected'];
+    if (approvalStatuses.indexOf(newStatus) !== -1) {
+      patchFields.ApprovalDate = new Date().toISOString().slice(0,10)+'T00:00:00Z';
+      if (note) patchFields.ApprovalSummary = note;
+    }
+    if (newStatus === 'Approved')                patchFields.ApprovalStatus = 'APPROVE';
+    if (newStatus === 'Approved (Conditional)') patchFields.ApprovalStatus = 'CONDITIONAL APPROVAL';
+    if (newStatus === 'Rejected')               patchFields.ApprovalStatus = 'REJECT';
+    await spPatch(LISTS[statusCtx.lk], statusCtx.item._id, patchFields);
     toast('Status updated to "' + newStatus + '".', 'success');
     closeM('m-status');
     setLoad('Refreshing…');
@@ -1210,6 +1361,10 @@ function toggleDiag() {
   if (open) {
     document.getElementById('diag-current-grp').textContent = ADMIN_GROUP;
     document.getElementById('cfg-admin-grp').value = ADMIN_GROUP;
+    var nde = document.getElementById('diag-current-natdir');
+    if (nde) nde.textContent = NATDIR_GROUP;
+    var ndi = document.getElementById('cfg-natdir-grp');
+    if (ndi) ndi.value = NATDIR_GROUP;
     var gl = document.getElementById('diag-groups');
     if (_diagGroups.length) {
       gl.innerHTML = _diagGroups.map(function(g){
@@ -1219,6 +1374,135 @@ function toggleDiag() {
     } else {
       gl.innerHTML = '<span style="color:#f66">No groups loaded yet — groups appear after sign-in.</span>';
     }
+  }
+}
+
+
+
+// ── PRINT REPORT ──────────────────────────────────────────────────────────
+function printReport() {
+  var all  = allItems();
+  var now  = new Date();
+  var dStr = now.toLocaleDateString('en-ZA',{day:'2-digit',month:'long',year:'numeric'});
+  var active  = all.filter(function(i){return i.Status==='Active';}).length;
+  var pending = all.filter(function(i){return ['Received','In Assessment','Assessed'].indexOf(i.Status)!==-1;}).length;
+  var totalCost = all.reduce(function(s,i){return s+(Number(i.TotalAnnualCost)||0);},0);
+
+  function tRow(i) {
+    return '<tr>'
+      +'<td>'+(i.RegisterID||'')+'</td>'
+      +'<td><strong>'+(i.ToolName||'')+'</strong></td>'
+      +'<td>'+(i.VendorName||'')+'</td>'
+      +'<td>'+(i.Status||'')+'</td>'
+      +'<td>'+(i.RiskTier||'')+'</td>'
+      +'<td>'+(i.LicenceRenewalDate?fmtDate(i.LicenceRenewalDate):'')+'</td>'
+      +'<td>'+(i.TotalAnnualCost?'R '+Number(i.TotalAnnualCost).toLocaleString('en-ZA'):'')+'</td>'
+      +'<td style="max-width:180px">'+(i.ApprovalSummary||'')+'</td>'
+      +'</tr>';
+  }
+
+  var html = '<!DOCTYPE html><html lang="en-ZA"><head><meta charset="UTF-8">'
+    +'<title>StudyTrust Vendor Register — Compliance Report</title>'
+    +'<style>'
+    +'body{font-family:Aptos,Calibri,"Segoe UI",Arial,sans-serif;font-size:10pt;color:#1a1a2e;margin:20mm}'
+    +'h1{font-size:16pt;color:#003d66;margin-bottom:2mm}h2{font-size:12pt;color:#226397;margin:8mm 0 3mm}'
+    +'.meta{font-size:9pt;color:#555;margin-bottom:6mm}'
+    +'.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6mm;margin-bottom:8mm}'
+    +'.kpi{border:1px solid #ccc;padding:4mm;border-radius:2mm}'
+    +'.kpi-v{font-size:22pt;font-weight:700;color:#226397;line-height:1}'
+    +'.kpi-l{font-size:8pt;color:#555;margin-top:1mm}'
+    +'table{width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:6mm}'
+    +'th{background:#003d66;color:#fff;padding:3mm 2mm;text-align:left;font-size:8pt}'
+    +'td{padding:2.5mm 2mm;border-bottom:0.5pt solid #ddd;vertical-align:top}'
+    +'tr:nth-child(even) td{background:#f8f9fa}'
+    +'.footer{margin-top:8mm;font-size:8pt;color:#999;border-top:0.5pt solid #ccc;padding-top:3mm;text-align:center}'
+    +'@page{margin:15mm}'
+    +'</style></head><body>'
+    +'<h1>StudyTrust Vendor &amp; AI Tool Register</h1>'
+    +'<div class="meta">Compliance Report &nbsp;&middot;&nbsp; Generated: '+dStr+' &nbsp;&middot;&nbsp; Prepared by: '+currentUser+'</div>'
+    +'<div class="kpis">'
+    +'<div class="kpi"><div class="kpi-v">'+all.length+'</div><div class="kpi-l">Total Registered</div></div>'
+    +'<div class="kpi"><div class="kpi-v">'+active+'</div><div class="kpi-l">Active</div></div>'
+    +'<div class="kpi"><div class="kpi-v">'+pending+'</div><div class="kpi-l">In Pipeline</div></div>'
+    +'<div class="kpi"><div class="kpi-v">R '+totalCost.toLocaleString('en-ZA')+'</div><div class="kpi-l">Total Annual Cost</div></div>'
+    +'</div>';
+
+  // Per-list sections
+  var listDefs = [{lk:'ai',label:'AI Tools'},{lk:'sw',label:'Software Tools'},{lk:'app',label:'Applications'}];
+  listDefs.forEach(function(ld){
+    var data = allData[ld.lk];
+    html += '<h2>'+ld.label+' ('+data.length+' items)</h2>'
+      +'<table><thead><tr><th>Reg. ID</th><th>Name</th><th>Vendor</th><th>Status</th><th>Risk</th><th>Renewal</th><th>Annual Cost</th><th>Approval Summary</th></tr></thead><tbody>'
+      +data.map(tRow).join('')
+      +'</tbody></table>';
+  });
+
+  // Renewals <90 days
+  var d90 = new Date(now.getTime()+90*86400000);
+  var renewals = all.filter(function(i){ if(!i.LicenceRenewalDate) return false; var d=new Date(i.LicenceRenewalDate); return d>now&&d<=d90; })
+    .sort(function(a,b){return new Date(a.LicenceRenewalDate)-new Date(b.LicenceRenewalDate);});
+  if (renewals.length) {
+    html += '<h2>Renewals Due Within 90 Days ('+renewals.length+')</h2>'
+      +'<table><thead><tr><th>Name</th><th>Vendor</th><th>Register</th><th>Renewal Date</th><th>Days</th><th>Annual Cost</th></tr></thead><tbody>'
+      +renewals.map(function(i){
+        var days=Math.floor((new Date(i.LicenceRenewalDate)-now)/86400000);
+        return '<tr><td>'+i.ToolName+'</td><td>'+i.VendorName+'</td><td>'+LIST_LABELS[i._list]+'</td><td>'+fmtDate(i.LicenceRenewalDate)+'</td><td>'+days+'</td><td>'+(i.TotalAnnualCost?'R '+Number(i.TotalAnnualCost).toLocaleString('en-ZA'):'')+'</td></tr>';
+      }).join('')
+      +'</tbody></table>';
+  }
+
+  html += '<div class="footer">StudyTrust &middot; 000-601 NPO &middot; IT3895/11(T) &middot; CONFIDENTIAL &middot; This report was generated from the live SharePoint register on '+dStr+'</div>'
+    +'</body></html>';
+
+  var w = window.open('','_blank','width=900,height=700');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 500);
+}
+
+// ── FILE UPLOAD ───────────────────────────────────────────────────────────
+async function getDriveId() {
+  if (graphDriveId) return graphDriveId;
+  var sid = await getSiteId();
+  var d   = await gFetch('/sites/' + sid + '/drive');
+  graphDriveId = d.id;
+  return graphDriveId;
+}
+
+async function uploadDocToSP(file) {
+  var sid  = await getSiteId();
+  var safe = file.name.replace(/[#%&{}\\<>*?/$!\'":@+`|=]/g, '_');
+  var path = 'VendorDocuments/' + Date.now() + '_' + safe;
+  var tok  = await getToken();
+  var url  = GRAPH + '/sites/' + sid + '/drive/root:/' + encodeURIComponent(path) + ':/content';
+  var r = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': file.type || 'application/octet-stream' },
+    body: file
+  });
+  if (!r.ok) {
+    var e = await r.json().catch(function(){return {};});
+    throw new Error((e && e.error && e.error.message) || 'Upload failed HTTP ' + r.status);
+  }
+  var data = await r.json();
+  return data.webUrl || data['@microsoft.graph.downloadUrl'] || '';
+}
+
+async function handleFileUpload(urlFieldId, fileInputId) {
+  var fi   = document.getElementById(fileInputId);
+  var file = fi && fi.files && fi.files[0];
+  if (!file) return;
+  var statEl = document.getElementById(urlFieldId + '-st');
+  function setSt(msg, cls) { if (statEl) { statEl.textContent = msg; statEl.className = 'upload-status ' + cls; } }
+  setSt('Uploading ' + file.name + '…', 'busy');
+  try {
+    var webUrl = await uploadDocToSP(file);
+    document.getElementById(urlFieldId).value = webUrl;
+    setSt('\u2713 Uploaded: ' + file.name, 'ok');
+    toast('Uploaded: ' + file.name, 'success');
+  } catch(e) {
+    setSt('\u2717 ' + e.message, 'err');
+    toast('Upload failed: ' + e.message, 'error');
   }
 }
 
