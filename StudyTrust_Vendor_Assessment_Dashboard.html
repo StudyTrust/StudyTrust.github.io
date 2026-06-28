@@ -182,12 +182,32 @@ header p{font-size:10px;opacity:.6}
       </div>
     </div>
     <div class="header-right">
-      <span class="role-badge" id="role-badge">Loading&hellip;</span>
+      <span class="role-badge" id="role-badge" onclick="toggleDiag()" title="Click to show group diagnostic" style="cursor:pointer">Loading&hellip;</span>
       <span id="user-name" style="font-size:12px;color:rgba(255,255,255,.75)">User</span>
       <button class="btn-header" onclick="signOut()">Sign Out</button>
     </div>
   </header>
   <div id="role-banner" class="role-banner">Loading&hellip;</div>
+  <!-- ── DIAGNOSTIC PANEL ── -->
+  <div id="diag-panel" style="display:none;background:#1a1a2e;color:#e0e0e0;padding:14px 20px;font-size:12px;font-family:monospace">
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <div style="color:#ffd700;font-weight:700;margin-bottom:6px">&#128100; Your Azure AD Groups</div>
+        <div id="diag-groups" style="max-height:200px;overflow-y:auto;background:#111;padding:8px;border-radius:4px;line-height:1.8">Loading&hellip;</div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div style="color:#ffd700;font-weight:700;margin-bottom:6px">&#9881; Admin Group Configuration</div>
+        <div style="color:#aaa;margin-bottom:6px">Current check: <span id="diag-current-grp" style="color:#ffd700"></span></div>
+        <input type="text" id="cfg-admin-grp" placeholder="Azure AD group display name"
+          style="width:100%;padding:6px 8px;border-radius:4px;border:1px solid #444;background:#222;color:#fff;font-size:12px;margin-bottom:6px">
+        <div style="display:flex;gap:6px">
+          <button onclick="saveGroupConfig()" style="background:#226397;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:12px">Save &amp; Reload</button>
+          <button onclick="resetGroupConfig()" style="background:#444;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px">Reset</button>
+          <button onclick="toggleDiag()" style="background:#444;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <nav class="tabs" id="tab-bar"></nav>
 
   <div class="content">
@@ -503,7 +523,29 @@ var MSAL_CFG     = {
 
 var LISTS      = {ai:'AI_Tools', sw:'Software_Tools', app:'Applications'};
 var LIST_LABELS= {ai:'AI Tools', sw:'Software Tools', app:'Applications'};
-var ADMIN_GROUP= 'IT_Assessment_Team';
+var ADMIN_GROUP = 'Dashboards - Governance-Admins'; // overridden by loadGroupConfig()
+var _diagGroups = [];
+
+function loadGroupConfig() {
+  var cfg = {};
+  try { cfg = JSON.parse(localStorage.getItem('st_vend_group_cfg') || '{}'); } catch(e) {}
+  ADMIN_GROUP = cfg.admin || 'Dashboards - Governance-Admins';
+  var inp = document.getElementById('cfg-admin-grp');
+  if (inp) inp.value = ADMIN_GROUP;
+}
+function saveGroupConfig() {
+  var ag = (document.getElementById('cfg-admin-grp')||{}).value || ADMIN_GROUP;
+  ag = ag.trim();
+  localStorage.setItem('st_vend_group_cfg', JSON.stringify({admin:ag}));
+  ADMIN_GROUP = ag;
+  toast('Group config saved. Reloading…', 'success');
+  setTimeout(function(){ window.location.reload(); }, 1200);
+}
+function resetGroupConfig() {
+  if (!confirm('Reset to default group name?')) return;
+  localStorage.removeItem('st_vend_group_cfg');
+  window.location.reload();
+}
 
 var STATUS_FLOW = {
   'Received':               ['In Assessment','Rejected'],
@@ -629,8 +671,9 @@ async function spPatchResilient(listName, itemId, fields) {
 async function detectRole() {
   try {
     var d = await gFetch('/me/memberOf?$select=displayName&$top=200');
-    var groups = (d.value || []).map(function(g){return (g.displayName||'').toLowerCase();});
-    if (groups.indexOf(ADMIN_GROUP.toLowerCase()) !== -1) return 'admin';
+    _diagGroups = (d.value || []).map(function(g){return g.displayName||'';}).filter(Boolean);
+    var lower = _diagGroups.map(function(g){return g.toLowerCase();});
+    if (lower.indexOf(ADMIN_GROUP.toLowerCase()) !== -1) return 'admin';
   } catch(e) { console.warn('Role detection failed:', e.message); }
   return 'personnel';
 }
@@ -1159,6 +1202,26 @@ function approvalBadge(s) {
   return '<span class="bd b'+cls+'">'+esc(s)+'</span>';
 }
 
+// ── DIAGNOSTIC ───────────────────────────────────────────────────────────
+function toggleDiag() {
+  var p = document.getElementById('diag-panel');
+  var open = p.style.display === 'none';
+  p.style.display = open ? '' : 'none';
+  if (open) {
+    document.getElementById('diag-current-grp').textContent = ADMIN_GROUP;
+    document.getElementById('cfg-admin-grp').value = ADMIN_GROUP;
+    var gl = document.getElementById('diag-groups');
+    if (_diagGroups.length) {
+      gl.innerHTML = _diagGroups.map(function(g){
+        var isMatch = g.toLowerCase() === ADMIN_GROUP.toLowerCase();
+        return '<div style="'+(isMatch?'color:#7FBA00;font-weight:700':'')+'">'+(isMatch?'&#10003; ':'')+g+'</div>';
+      }).join('');
+    } else {
+      gl.innerHTML = '<span style="color:#f66">No groups loaded yet — groups appear after sign-in.</span>';
+    }
+  }
+}
+
 // ── MODALS ────────────────────────────────────────────────────────────────
 function openM(id) { document.getElementById(id).classList.add('show'); }
 function closeM(id){ document.getElementById(id).classList.remove('show'); }
@@ -1183,6 +1246,7 @@ function hideLoad()  { document.getElementById('load-ov').classList.add('hidden'
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 async function init() {
+  loadGroupConfig();
   setLoad('Initialising…');
   try {
     var ok = await initMsal();
