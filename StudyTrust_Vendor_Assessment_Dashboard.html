@@ -218,7 +218,20 @@ header p{font-size:10px;opacity:.6}
       <button class="btn-header" onclick="signOut()">Sign Out</button>
     </div>
   </header>
-  <div id="role-banner" class="role-banner">Loading&hellip;</div>
+  <div id="role-banner" class="role-banner" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+    <span id="role-banner-text">Loading&hellip;</span>
+    <div id="role-switcher" style="display:none;align-items:center;gap:4px;font-size:11px">
+      <span style="opacity:.7;font-weight:400">View as:</span>
+      <button class="rs-opt" data-role="admin"      onclick="switchRole('admin')"      style="padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.25);color:inherit;cursor:pointer;font-size:11px;font-weight:700">Admin</button>
+      <button class="rs-opt" data-role="natdir"     onclick="switchRole('natdir')"     style="padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:transparent;color:inherit;cursor:pointer;font-size:11px">National Director</button>
+      <button class="rs-opt" data-role="personnel"  onclick="switchRole('personnel')"  style="padding:3px 10px;border-radius:4px;border:1px solid rgba(255,255,255,.3);background:transparent;color:inherit;cursor:pointer;font-size:11px">All Personnel</button>
+    </div>
+  </div>
+  <!-- ── PREVIEW BANNER ── -->
+  <div id="preview-banner" style="display:none;background:#581c87;color:#f3e8ff;padding:6px 20px;font-size:12px;font-weight:600;text-align:center">
+    &#128065; Previewing as <span id="preview-role-name"></span> &mdash;
+    <button onclick="switchRole('admin')" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:12px;margin-left:6px">Return to Admin View</button>
+  </div>
   <!-- ── DIAGNOSTIC PANEL ── -->
   <div id="diag-panel" style="display:none;background:#1a1a2e;color:#e0e0e0;padding:14px 20px;font-size:12px;font-family:monospace">
     <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
@@ -628,6 +641,7 @@ var USER_FIELDS = {BusinessOwner:1, ToolChampionOwner:1};
 
 // ── STATE ─────────────────────────────────────────────────────────────────
 var msalApp, graphToken, graphSiteId, graphDriveId;
+var trueRole = 'personnel'; // actual role from Azure AD (never changes)
 var currentRole = 'personnel';
 var currentUser = 'User';
 var allData     = {ai:[], sw:[], app:[]};
@@ -752,7 +766,8 @@ async function loadAndRender() {
     var accs = msalApp.getAllAccounts();
     currentUser = (accs[0] && (accs[0].name || accs[0].username)) || 'User';
     document.getElementById('user-name').textContent = currentUser;
-    currentRole = role;
+    trueRole   = role;
+    currentRole= role;
     applyRole();
     setLoad('Loading vendor register from SharePoint…');
     await loadAllData();
@@ -791,6 +806,22 @@ function clearFilters(lk) {
   renderListTab(lk);
 }
 
+// ── ROLE SWITCHER ────────────────────────────────────────────────────────
+function switchRole(role) {
+  if (trueRole !== 'admin') return; // only admins can switch
+  currentRole = role;
+  applyRole();
+  renderAll();
+  // Update switcher highlight
+  document.querySelectorAll('.rs-opt').forEach(function(el){
+    el.style.background   = el.dataset.role === role ? 'rgba(255,255,255,.25)' : 'transparent';
+    el.style.fontWeight   = el.dataset.role === role ? '700' : '400';
+  });
+  // Show preview banner if not in true role
+  var prev = document.getElementById('preview-banner');
+  if (prev) prev.style.display = (role !== trueRole) ? '' : 'none';
+}
+
 // ── APPLY ROLE + TABS ─────────────────────────────────────────────────────
 function applyRole() {
   var badge  = document.getElementById('role-badge');
@@ -798,20 +829,34 @@ function applyRole() {
   if (currentRole === 'admin') {
     badge.textContent  = 'Admin';
     badge.className    = 'role-badge rb-admin';
-    banner.textContent = 'Admin Mode — Full access. All changes save live to SharePoint.';
+    document.getElementById('role-banner-text').textContent = 'Admin Mode — Full access. All changes save live to SharePoint.';
     banner.className   = 'role-banner ban-admin';
   } else if (currentRole === 'natdir') {
     badge.textContent  = 'National Director';
     badge.className    = 'role-badge rb-natdir';
-    banner.textContent = 'National Director View — Full register visibility. Use Pending Approval tab to approve or reject assessed tools.';
+    document.getElementById('role-banner-text').textContent = 'National Director View — Full register visibility. Use Pending Approval tab to approve or reject assessed tools.';
     banner.className   = 'role-banner ban-natdir';
   } else {
     badge.textContent  = 'All Personnel';
     badge.className    = 'role-badge rb-personnel';
-    banner.textContent = 'All Personnel View — Approved and active tools only.';
+    document.getElementById('role-banner-text').textContent = 'All Personnel View — Approved and active tools only.';
     banner.className   = 'role-banner ban-personnel';
   }
   document.querySelectorAll('.adm').forEach(function(el){ el.style.display = currentRole==='admin' ? '' : 'none'; });
+  // Show role switcher only when trueRole is admin
+  var rs = document.getElementById('role-switcher');
+  if (rs) rs.style.display = trueRole==='admin' ? 'flex' : 'none';
+  // Preview banner
+  var prev = document.getElementById('preview-banner');
+  var prn  = document.getElementById('preview-role-name');
+  if (prev && prn) {
+    var showing = currentRole!==trueRole;
+    prev.style.display = showing ? '' : 'none';
+    if (showing) {
+      var labels = {natdir:'National Director', personnel:'All Personnel'};
+      prn.textContent = labels[currentRole] || currentRole;
+    }
+  }
   buildTabs();
 }
 
