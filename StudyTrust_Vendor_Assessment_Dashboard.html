@@ -656,7 +656,7 @@
                             <td>${item.ToolName || "-"}</td>
                             <td>${item.VendorName || "-"}</td>
                             <td>${item.LicenceRenewalDate ? new Date(item.LicenceRenewalDate).toLocaleDateString() : "-"}</td>
-                            <td>${item.TotalAnnualCost ? \`ZAR \${item.TotalAnnualCost.toLocaleString()}\` : "-"}</td>
+                            <td>${item.TotalAnnualCost ? 'ZAR ' + item.TotalAnnualCost.toLocaleString() : "-"}</td>
                             <td>${item.LicenceRenewalNoticePeriod || "-"} days</td>
                             <td>${item.LicenceRenewalDate ? Math.floor((new Date(item.LicenceRenewalDate) - new Date()) / (1000*60*60*24)) : "-"}</td>
                         `;
